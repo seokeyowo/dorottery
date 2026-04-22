@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>도로롱 기계식 키보드 갤러리 추첨기</title>
+<link rel="icon" type="image/png" href="burger.png" />
+<link rel="shortcut icon" type="image/png" href="burger.png" />
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
 :root{
@@ -550,6 +552,12 @@ async function autoLoadProfiles() {
 $("loadProfiles").onclick = autoLoadProfiles;
 
 function getPool() {
+  // 필터 파이프라인 (순서 중요):
+  //   state.comments (모든 수집 댓글, 중복 포함)
+  //   └ ① 유동/익명 제외
+  //   └ ② 포함/제외 키워드 매칭
+  //   └ ③ 눔계 필터 (글/댓글 수)
+  //   └ ④ 1인 1댓 dedup ← 맨 마지막. 키워드 매칭된 댓글 중 첫 번째가 대표가 됨
   const incKw = $("includeKw").value.split(",").map(s=>s.trim()).filter(Boolean);
   const excKw = $("excludeKw").value.split(",").map(s=>s.trim()).filter(Boolean);
   const exFloating = $("excludeFloating").checked;
@@ -559,6 +567,7 @@ function getPool() {
   const minPosts = parseInt($("minPosts").value) || 0;
   const minReplies = parseInt($("minReplies").value) || 0;
   const minSum = parseInt($("minSum").value) || 0;
+  // ① ~ ③
   let out = state.comments.filter(c => {
     if (exFloating && c.type === "floating") return false;
     if (exAnon && c.type === "anonymous") return false;
@@ -574,6 +583,7 @@ function getPool() {
     }
     return true;
   });
+  // ④ dedup은 맨 마지막: 위 필터를 통과한 댓글들 중 사용자별 첫 번째만 남김
   if (dedup) {
     const seen = new Set();
     out = out.filter(c => { const k = (c.userId || c.name).toLowerCase();
