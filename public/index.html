@@ -283,13 +283,20 @@ const BOOKMARKLET_SRC = `(async()=>{
   const html = document.documentElement.outerHTML;
   const esn = (html.match(/name=['"]e_s_n_o['"]\\s+value=['"]([a-f0-9]+)['"]/) || [,''])[1];
 
+  // 수집 중 이탈 방지
+  const blockUnload = (e) => { e.preventDefault(); e.returnValue = '수집 중입니다. 정말 나가시겠습니까?'; return e.returnValue; };
+  window.addEventListener('beforeunload', blockUnload);
+
   // 상태 오버레이
   const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;top:20px;right:20px;background:#1a1410;color:#fff;padding:14px 18px;border-radius:10px;z-index:999999;font:14px sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);min-width:280px';
-  box.innerHTML = '<b>🎰 도로롱 수집 중…</b><div id="dororong-status" style="margin-top:8px;font-size:12px;opacity:.8">댓글 불러오는 중...</div>';
+  box.style.cssText = 'position:fixed;top:20px;right:20px;background:#1a1410;color:#fff;padding:14px 18px;border-radius:10px;z-index:999999;font:14px sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);min-width:300px;max-width:360px';
+  box.innerHTML = '<b>🎰 도로롱 수집 중…</b>' +
+    '<div id="dororong-status" style="margin-top:8px;font-size:12px;opacity:.85">댓글 불러오는 중…</div>' +
+    '<div style="margin-top:6px;font-size:11px;color:#ffb0b0">⚠ 이 페이지를 벗어나지 마세요</div>';
   document.body.appendChild(box);
   const st = (t) => document.getElementById('dororong-status').textContent = t;
 
+  try {
   const all = [];
   const seen = new Set();
   for (let p = 1; p <= 100; p++) {
@@ -369,6 +376,12 @@ const BOOKMARKLET_SRC = `(async()=>{
   box.innerHTML = '<b>✓ 수집 완료 (' + all.length + '개 댓글)</b><div style="margin-top:8px;font-size:12px">새 탭에서 추첨기가 열립니다…</div>';
   window.open(target, '_blank');
   setTimeout(() => box.remove(), 3000);
+  } catch(e) {
+    box.innerHTML = '<b style="color:#ff8888">✗ 수집 중단: ' + e.message + '</b>';
+    setTimeout(() => box.remove(), 5000);
+  } finally {
+    window.removeEventListener('beforeunload', blockUnload);
+  }
 })();`;
 
 // 북마클릿 a 태그에 javascript: URI 주입
