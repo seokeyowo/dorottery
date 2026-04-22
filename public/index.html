@@ -66,8 +66,8 @@ html,body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
 .draw-summary{font-size:14px;color:var(--muted);font-weight:600}
 .big-num{font-size:22px;font-weight:800;color:var(--ink);font-family:ui-monospace,monospace}
 .big-num.accent{color:var(--accent)}
-.method-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
-.mcard{display:flex;align-items:center;gap:10px;padding:12px 14px;
+.method-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.mcard{display:flex;align-items:center;gap:6px;padding:10px 8px;
   background:#fff;border:1px solid var(--line);border-radius:8px;cursor:pointer;
   font-size:13px;font-weight:600;color:var(--muted);text-align:left}
 .mcard span{font-size:20px;line-height:1}
@@ -213,6 +213,8 @@ body{padding-bottom:80px}
         <button class="mcard active" data-method="basic"><span>⚡</span>즉시</button>
         <button class="mcard" data-method="roulette"><span>🎡</span>룰렛</button>
         <button class="mcard" data-method="slot"><span>🎰</span>슬롯</button>
+        <button class="mcard" data-method="card"><span>🃏</span>카드뽑기</button>
+        <button class="mcard" data-method="battle"><span>⚔️</span>배틀로얄</button>
       </div>
       <div class="grid2 mt">
         <div><label>당첨 인원</label><input id="winnerCount" type="number" min="1" value="1" /></div>
@@ -580,6 +582,8 @@ function showResult(picked, pool, seed) {
   if (m === "basic") renderResult(picked, seed);
   else if (m === "roulette") rouletteAnim(picked, pool, seed);
   else if (m === "slot") slotAnim(picked, pool, seed);
+  else if (m === "card") cardAnim(picked, pool, seed);
+  else if (m === "battle") battleAnim(picked, pool, seed);
 }
 
 function seedFoot(seed) {
@@ -667,6 +671,208 @@ function slotAnim(picked, pool, seed) {
   strip.style.transition = "transform 5s cubic-bezier(.12,.7,.2,1)";
   requestAnimationFrame(() => { strip.style.transform = `translateY(${finalY}px)`; });
   setTimeout(() => renderResult(picked, seed), 5300);
+}
+
+// ── 카드뽑기 ─────────────────────────────────────
+function cardAnim(picked, pool, seed) {
+  const N = Math.min(Math.max(pool.length, 6), 12);  // 6~12장
+  const target = picked[0];
+  // 나머지 카드용 pool
+  const others = pool.filter(c => (c.userId||c.name) !== (target.userId||target.name))
+                     .sort(()=>Math.random()-0.5).slice(0, N-1);
+  const cards = [...others, target].sort(()=>Math.random()-0.5);
+  const targetIdx = cards.indexOf(target);
+
+  const cardsHtml = cards.map((c,i) => `
+    <div class="card-el" data-i="${i}" style="
+      width:80px;height:120px;background:linear-gradient(135deg,#3a2a55,#5b6f8a);
+      border:2px solid #ffd66b;border-radius:10px;
+      display:flex;align-items:center;justify-content:center;
+      color:#fff;font-weight:800;cursor:pointer;position:relative;
+      transform-style:preserve-3d;transition:transform .6s;user-select:none">
+      <div class="face-back" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+        backface-visibility:hidden;font-size:32px">🂠</div>
+      <div class="face-front" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+        background:linear-gradient(135deg,#fff,#ffe1ec);color:#e91e63;border-radius:8px;
+        font-size:11px;padding:6px;text-align:center;backface-visibility:hidden;transform:rotateY(180deg)">
+        ${esc(c.name).slice(0,8)}
+      </div>
+    </div>`).join("");
+  $("resultBody").innerHTML = `
+    <div style="font-size:13px;color:#888;margin-bottom:10px">🃏 카드뽑기</div>
+    <div id="cardBox" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;padding:14px;
+      background:#1a1410;border-radius:12px">
+      ${cardsHtml}
+    </div>
+    <div id="cardHint" style="margin-top:10px;font-size:13px;color:var(--muted)">카드를 클릭해 뽑으세요</div>`;
+
+  let revealed = false;
+  document.querySelectorAll(".card-el").forEach((el, i) => {
+    el.onclick = () => {
+      if (revealed) return;
+      revealed = true;
+      // 선택한 카드 자리에 타겟 카드 실제 내용을 먼저 스왑
+      const chosen = cards[i];
+      // 모든 카드 flip 순차 공개
+      document.querySelectorAll(".card-el").forEach((card, j) => {
+        setTimeout(() => {
+          card.style.transform = "rotateY(180deg)";
+          if (j === targetIdx) card.style.boxShadow = "0 0 30px #ffd66b";
+        }, j === i ? 0 : 300 + (j * 80));
+      });
+      $("cardHint").innerHTML = chosen === target
+        ? `✨ <b style="color:var(--accent)">첫 뽑기에 당첨!</b>`
+        : `당신의 뽑기: <b>${esc(chosen.name)}</b> · 당첨: <b style="color:var(--accent)">${esc(target.name)}</b>`;
+      setTimeout(() => renderResult(picked, seed), 1500 + cards.length * 80);
+    };
+  });
+
+  // 유저가 3초 내에 안 고르면 자동 뽑기 (결정적: 타겟 아닌 랜덤 카드)
+  setTimeout(() => {
+    if (!revealed) {
+      const autoIdx = Math.floor(Math.random() * cards.length);
+      document.querySelectorAll(".card-el")[autoIdx].click();
+    }
+  }, 4500);
+}
+
+// ── 배틀로얄 ─────────────────────────────────────
+function battleAnim(picked, pool, seed) {
+  const W = 480, H = 420;
+  // 최대 12명까지만 배틀 참가 (가시성)
+  const target = picked[0];
+  const targetKey = target.userId || target.name;
+  const participants = pool.filter(c => (c.userId||c.name) !== targetKey)
+                           .sort(()=>Math.random()-0.5).slice(0, 11);
+  participants.push(target);
+  const N = participants.length;
+  // 셔플 — target이 꼭 마지막 자리 아니어도 됨
+  participants.sort(()=>Math.random()-0.5);
+  const targetIdx = participants.findIndex(c => (c.userId||c.name) === targetKey);
+
+  $("resultBody").innerHTML = `
+    <div style="font-size:13px;color:#888;margin-bottom:10px">⚔️ 배틀로얄 — 라스트 원 스탠딩</div>
+    <canvas id="battle" width="${W}" height="${H}"
+      style="background:radial-gradient(ellipse at center,#3a2818,#1a0f08);
+             border-radius:12px;max-width:100%;display:block;margin:0 auto"></canvas>
+    <div id="battleLog" style="margin-top:8px;font-size:12px;color:var(--muted);
+      height:40px;overflow:hidden;font-family:ui-monospace,monospace"></div>`;
+  const cv = document.getElementById("battle"), ctx = cv.getContext("2d");
+
+  // 초기 배치: 원형으로 분산
+  const fighters = participants.map((c, i) => {
+    const a = (i / N) * Math.PI * 2;
+    return {
+      c, alive: true,
+      x: W/2 + Math.cos(a) * 140,
+      y: H/2 + Math.sin(a) * 140,
+      vx: (Math.random()-0.5) * 2,
+      vy: (Math.random()-0.5) * 2,
+      hp: 100,
+      flashFrames: 0,
+    };
+  });
+
+  const log = [];
+  const addLog = (s) => {
+    log.push(s); if (log.length > 3) log.shift();
+    document.getElementById("battleLog").innerHTML = log.map(x=>`<div>${x}</div>`).join("");
+  };
+
+  let frames = 0;
+  const killInterval = 45; // 대략 0.75초마다 한 명 처치
+
+  const drawStick = (f, isTarget) => {
+    if (!f.alive) return;
+    const flash = f.flashFrames > 0;
+    if (flash) f.flashFrames--;
+    // 몸통
+    ctx.strokeStyle = flash ? "#ff5050" : (isTarget ? "#ffd66b" : "#e0e0e0");
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y - 14, 6, 0, Math.PI*2);  // 머리
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(f.x, f.y - 8); ctx.lineTo(f.x, f.y + 10); // 몸
+    ctx.moveTo(f.x - 8, f.y - 2); ctx.lineTo(f.x + 8, f.y - 2); // 팔
+    ctx.moveTo(f.x, f.y + 10); ctx.lineTo(f.x - 6, f.y + 20); // 왼다리
+    ctx.moveTo(f.x, f.y + 10); ctx.lineTo(f.x + 6, f.y + 20); // 오다리
+    ctx.stroke();
+    // 이름
+    ctx.fillStyle = flash ? "#ff5050" : (isTarget ? "#ffd66b" : "#ccc");
+    ctx.font = `${isTarget ? "bold " : ""}10px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(esc(f.c.name).slice(0,8), f.x, f.y - 24);
+  };
+
+  const step = () => {
+    frames++;
+    // 물리
+    for (const f of fighters) {
+      if (!f.alive) continue;
+      f.x += f.vx; f.y += f.vy;
+      f.vx *= 0.97; f.vy *= 0.97;
+      if (Math.abs(f.vx) < 0.3) f.vx += (Math.random()-0.5) * 1.5;
+      if (Math.abs(f.vy) < 0.3) f.vy += (Math.random()-0.5) * 1.5;
+      if (f.x < 20) { f.x = 20; f.vx = Math.abs(f.vx); }
+      if (f.x > W-20) { f.x = W-20; f.vx = -Math.abs(f.vx); }
+      if (f.y < 30) { f.y = 30; f.vy = Math.abs(f.vy); }
+      if (f.y > H-30) { f.y = H-30; f.vy = -Math.abs(f.vy); }
+    }
+
+    // 캔버스
+    ctx.clearRect(0,0,W,H);
+    // 바닥 그림자
+    ctx.fillStyle = "rgba(0,0,0,.3)";
+    for (const f of fighters) {
+      if (!f.alive) continue;
+      ctx.beginPath(); ctx.ellipse(f.x, f.y+22, 10, 3, 0, 0, Math.PI*2); ctx.fill();
+    }
+    // 파이터
+    for (const f of fighters) drawStick(f, f.c === target);
+
+    // 주기적으로 한 명 처치 (타겟은 살려두기)
+    if (frames % killInterval === 0) {
+      const alive = fighters.filter(f => f.alive);
+      const aliveCount = alive.length;
+      if (aliveCount > 1) {
+        // 타겟이 아닌 파이터 중 랜덤 선택해 처치
+        const victims = alive.filter(f => f.c !== target);
+        if (victims.length > 0) {
+          const victim = victims[Math.floor(Math.random() * victims.length)];
+          // 가해자: 가장 가까운 생존자
+          const dists = alive.filter(f => f !== victim)
+            .map(f => ({f, d: Math.hypot(f.x-victim.x, f.y-victim.y)}))
+            .sort((a,b) => a.d-b.d);
+          const killer = dists[0].f;
+          victim.alive = false;
+          killer.flashFrames = 20;
+          addLog(`💥 <b style="color:#ff9898">${esc(killer.c.name).slice(0,10)}</b> → ${esc(victim.c.name).slice(0,10)} 처치 (남은 ${aliveCount-1}명)`);
+        }
+      }
+    }
+
+    const stillAlive = fighters.filter(f => f.alive).length;
+    if (stillAlive > 1 && frames < 2500) {
+      requestAnimationFrame(step);
+    } else {
+      // 마지막 — 타겟만 남기고 강제 종료
+      fighters.forEach(f => { if (f.c !== target) f.alive = false; });
+      const t = fighters.find(f => f.c === target);
+      ctx.clearRect(0,0,W,H);
+      ctx.fillStyle = "rgba(255,214,107,.15)";
+      ctx.fillRect(0, 0, W, H);
+      drawStick(t, true);
+      ctx.fillStyle = "#ffd66b";
+      ctx.font = "bold 28px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("WINNER", W/2, 60);
+      ctx.font = "bold 16px sans-serif";
+      ctx.fillText(target.name, W/2, H - 20);
+      addLog(`🏆 <b style="color:#ffd66b">${esc(target.name)}</b> 최후의 생존자!`);
+      setTimeout(() => renderResult(picked, seed), 1800);
+    }
+  };
+  step();
 }
 
 
