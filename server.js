@@ -37,9 +37,15 @@ async function fetchText(url, headers = {}) {
     headers: { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9", ...headers },
     redirect: "follow",
   });
+  if (res.status === 429 || res.status === 403) {
+    const ra = res.headers.get("retry-after");
+    throw new Error(`DC 차단 감지 (HTTP ${res.status}${ra ? `, ${ra}s 후 재시도` : ""}). 5~15분 후 다시 시도하세요.`);
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
   return await res.text();
 }
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function fetchDcPost(url) {
   const info = parseDcUrl(url);
@@ -60,6 +66,7 @@ async function fetchAllComments({ id, no, e_s_n_o, refererUrl }) {
   const out = [];
   const seen = new Set();
   for (let page = 1; page <= 100; page++) {
+    if (page > 1) await sleep(250); // 댓글 페이지 간 딜레이
     const body = new URLSearchParams({
       id, no, cmt_id: id, cmt_no: no,
       e_s_n_o, comment_page: String(page),
@@ -136,6 +143,7 @@ async function fetchDcGallog(userId) {
     ]);
     return { posts, replies };
   } catch (e) {
+    if (e.message && e.message.includes("DC 차단")) throw e; // 전체 중단
     return { posts: 0, replies: 0, error: e.message };
   }
 }
@@ -168,17 +176,23 @@ app.post("/api/profiles", async (req, res) => {
   const { site, users } = req.body || {};
   if (!Array.isArray(users)) return res.status(400).json({ error: "users 배열 필요" });
   if (site !== "dcinside") return res.status(400).json({ error: "지원하지 않는 사이트" });
-  // 동시 4개씩
+  // 동시 2개 + 각 요청 사이 300ms 간격 → DC 봇차단 회피
   const profiles = {};
   const queue = users.slice();
   const worker = async () => {
     while (queue.length) {
       const uid = queue.shift();
       profiles[uid] = await fetchDcGallog(uid);
+      await sleep(300);
     }
   };
-  await Promise.all(Array.from({ length: 4 }, worker));
-  res.json({ profiles });
+  try {
+    await Promise.all(Array.from({ length: 2 }, worker));
+    res.json({ profiles });
+  } catch (e) {
+    console.error("gallog bulk fail:", e.message);
+    res.status(503).json({ error: e.message, profiles });
+  }
 });
 
 app.listen(PORT, HOST, () => {
