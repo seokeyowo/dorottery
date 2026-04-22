@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "도로롱 추첨기 헬퍼",
+  "version": "1.0.0",
+  "description": "DC 게시글의 댓글과 작성자 활동량을 자동 수집해 도로롱 추첨기로 전송합니다.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://gall.dcinside.com/board/view/*",
+        "https://gall.dcinside.com/mgallery/board/view/*",
+        "https://gall.dcinside.com/mini/board/view/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "https://gallog.dcinside.com/*",
+    "https://gall.dcinside.com/*"
+  ],
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}
