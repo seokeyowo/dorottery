@@ -161,19 +161,10 @@ body{padding-bottom:80px}
   <!-- 왼쪽: 옵션 -->
   <div class="col-left">
     <section class="card">
-      <h3 class="sec">데이터 불러오기</h3>
-      <div style="background:#fbf8f3;padding:12px;border-radius:8px;border:1px solid var(--line)">
-        <b style="font-size:13px">① 북마클릿 설치</b>
-        <div class="hint" style="margin-top:4px">아래 버튼을 마우스로 끌어서 <b>브라우저 북마크바에 떨어뜨리세요</b>.</div>
-        <a id="bookmarklet" href="#"
-           style="display:inline-block;margin-top:8px;padding:8px 16px;background:var(--accent);color:#fff;
-                  border-radius:6px;text-decoration:none;font-weight:700;font-size:13px;cursor:grab">
-          🔖 도로롱 댓글 수집
-        </a>
-      </div>
-      <div style="background:#fbf8f3;padding:12px;border-radius:8px;border:1px solid var(--line);margin-top:10px">
-        <b style="font-size:13px">② DC 게시글에서 클릭</b>
-        <div class="hint" style="margin-top:4px">추첨할 DC 게시글 페이지를 열고 북마크바의 "도로롱 댓글 수집"을 클릭하세요. 댓글 + 활동량이 자동 수집되어 이 페이지로 전송됩니다.</div>
+      <h3 class="sec">게시글 불러오기</h3>
+      <div class="row">
+        <input id="postUrl" type="text" placeholder="https://gall.dcinside.com/board/view/?id=..." />
+        <button id="loadBtn" class="primary">불러오기</button>
       </div>
       <div id="postInfo" class="post-info hidden">
         <span class="chip" id="galleryChip"></span>
@@ -274,121 +265,6 @@ const BACKEND_URL = "";
 const API = BACKEND_URL || ((location.protocol === "file:") ? "http://localhost:3939" : "");
 const SITE_URL = location.origin + location.pathname;
 
-// ── 북마클릿 생성 & 주입 ──────────────────────────────
-const BOOKMARKLET_SRC = `(async()=>{
-  const m = location.search.match(/[?&]id=([^&]+)/);
-  const n = location.search.match(/[?&]no=(\\d+)/);
-  if (!m || !n) { alert('DC 게시글 페이지에서 실행하세요'); return; }
-  const id = m[1], no = n[1];
-  const html = document.documentElement.outerHTML;
-  const esn = (html.match(/name=['"]e_s_n_o['"]\\s+value=['"]([a-f0-9]+)['"]/) || [,''])[1];
-
-  // 수집 중 이탈 방지
-  const blockUnload = (e) => { e.preventDefault(); e.returnValue = '수집 중입니다. 정말 나가시겠습니까?'; return e.returnValue; };
-  window.addEventListener('beforeunload', blockUnload);
-
-  // 상태 오버레이
-  const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;top:20px;right:20px;background:#1a1410;color:#fff;padding:14px 18px;border-radius:10px;z-index:999999;font:14px sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);min-width:300px;max-width:360px';
-  box.innerHTML = '<b>🎰 도로롱 수집 중…</b>' +
-    '<div id="dororong-status" style="margin-top:8px;font-size:12px;opacity:.85">댓글 불러오는 중…</div>' +
-    '<div style="margin-top:6px;font-size:11px;color:#ffb0b0">⚠ 이 페이지를 벗어나지 마세요</div>';
-  document.body.appendChild(box);
-  const st = (t) => document.getElementById('dororong-status').textContent = t;
-
-  try {
-  const all = [];
-  const seen = new Set();
-  for (let p = 1; p <= 100; p++) {
-    st('댓글 페이지 ' + p + '…');
-    let j;
-    try {
-      const r = await fetch('/board/comment/', {
-        method: 'POST',
-        headers: { 'X-Requested-With':'XMLHttpRequest', 'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8' },
-        body: new URLSearchParams({ id, no, cmt_id:id, cmt_no:no, e_s_n_o:esn, comment_page:p, sort:'', prevCnt:'0', board_type:'' })
-      });
-      j = await r.json();
-    } catch(e) { break; }
-    const list = j.comments || [];
-    if (!list.length) break;
-    let added = 0;
-    for (const c of list) {
-      if (c.nicktype === 'COMMENT_BOY') continue;
-      if (seen.has(c.no)) continue;
-      seen.add(c.no);
-      const text = (c.memo || '').replace(/<img[^>]+alt=['"]([^'"]*)['"][^>]*>/gi, '[$1]').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').replace(/&nbsp;/g, ' ').trim();
-      all.push({
-        id: c.no,
-        name: c.name || c.user_id || '익명',
-        userId: c.user_id || '',
-        ip: c.ip || '',
-        type: c.user_id ? 'fixed' : (c.ip ? 'floating' : 'anonymous'),
-        text,
-        regDate: c.reg_date || ''
-      });
-      added++;
-    }
-    const total = j.total_cnt || 0;
-    if (total && all.length >= total) break;
-    if (added === 0) break;
-  }
-
-  // 갤로그 활동량 조회
-  const users = [...new Set(all.filter(c => c.userId).map(c => c.userId))];
-  const profiles = {};
-  for (let i = 0; i < users.length; i++) {
-    st('활동량 조회 ' + (i+1) + '/' + users.length);
-    const u = users[i];
-    try {
-      const h = await fetch('https://gallog.dcinside.com/' + encodeURIComponent(u)).then(r => r.text());
-      const grab = (pats) => {
-        for (const re of pats) { const m = h.match(re); if (m) return parseInt(m[1].replace(/,/g,'')) || 0; }
-        return 0;
-      };
-      const posts = grab([
-        /location\\.href='\\/[^']+\\/posting'[^>]*>\\s*게시글\\s*<span[^>]*>\\(([\\d,]+)\\)/,
-        /\\/posting['"][^>]*>\\s*게시글[^<]*<span[^>]*>\\(([\\d,]+)\\)/,
-        /게시글\\s*<span[^>]*class=['"]num['"][^>]*>\\(([\\d,]+)\\)/
-      ]);
-      const replies = grab([
-        /location\\.href='\\/[^']+\\/comment'[^>]*>\\s*댓글\\s*<span[^>]*>\\(([\\d,]+)\\)/,
-        /\\/comment['"][^>]*>\\s*댓글[^<]*<span[^>]*>\\(([\\d,]+)\\)/,
-        /댓글\\s*<span[^>]*class=['"]num['"][^>]*>\\(([\\d,]+)\\)/
-      ]);
-      profiles[u] = { posts, replies };
-      if (!posts && !replies) console.warn('[도로롱] 갤로그 파싱 실패:', u, 'HTML', h.length, '바이트');
-    } catch(e) { console.error('[도로롱] 갤로그 요청 실패:', u, e); profiles[u] = { posts:0, replies:0 }; }
-  }
-
-  const title = (document.querySelector('.title_subject') || {}).textContent || '';
-  const gal = (document.querySelector('.title_headtext') || {}).textContent || id;
-
-  const data = {
-    site: 'dcinside', id, no,
-    title: title.trim(), galleryName: gal.trim(),
-    total: all.length, comments: all, profiles
-  };
-  st('데이터 전송…');
-  const json = JSON.stringify(data);
-  const b64 = btoa(unescape(encodeURIComponent(json)));
-  const target = '${SITE_URL}' + '#data=' + b64;
-  box.innerHTML = '<b>✓ 수집 완료 (' + all.length + '개 댓글)</b><div style="margin-top:8px;font-size:12px">새 탭에서 추첨기가 열립니다…</div>';
-  window.open(target, '_blank');
-  setTimeout(() => box.remove(), 3000);
-  } catch(e) {
-    box.innerHTML = '<b style="color:#ff8888">✗ 수집 중단: ' + e.message + '</b>';
-    setTimeout(() => box.remove(), 5000);
-  } finally {
-    window.removeEventListener('beforeunload', blockUnload);
-  }
-})();`;
-
-// 북마클릿 a 태그에 javascript: URI 주입
-{
-  const bm = document.getElementById("bookmarklet");
-  if (bm) bm.href = "javascript:" + encodeURIComponent(BOOKMARKLET_SRC);
-}
 
 // ── 페이지 로드 시 hash 데이터 파싱 ──────────────────
 (function loadFromHash() {
