@@ -159,10 +159,19 @@ body{padding-bottom:80px}
   <!-- 왼쪽: 옵션 -->
   <div class="col-left">
     <section class="card">
-      <h3 class="sec">소스 URL</h3>
-      <div class="row">
-        <input id="postUrl" type="text" placeholder="https://gall.dcinside.com/board/view/?id=..." />
-        <button id="loadBtn" class="primary">불러오기</button>
+      <h3 class="sec">데이터 불러오기</h3>
+      <div style="background:#fbf8f3;padding:12px;border-radius:8px;border:1px solid var(--line)">
+        <b style="font-size:13px">① 북마클릿 설치</b>
+        <div class="hint" style="margin-top:4px">아래 버튼을 마우스로 끌어서 <b>브라우저 북마크바에 떨어뜨리세요</b>.</div>
+        <a id="bookmarklet" href="#"
+           style="display:inline-block;margin-top:8px;padding:8px 16px;background:var(--accent);color:#fff;
+                  border-radius:6px;text-decoration:none;font-weight:700;font-size:13px;cursor:grab">
+          🔖 도로롱 댓글 수집
+        </a>
+      </div>
+      <div style="background:#fbf8f3;padding:12px;border-radius:8px;border:1px solid var(--line);margin-top:10px">
+        <b style="font-size:13px">② DC 게시글에서 클릭</b>
+        <div class="hint" style="margin-top:4px">추첨할 DC 게시글 페이지를 열고 북마크바의 "도로롱 댓글 수집"을 클릭하세요. 댓글 + 활동량이 자동 수집되어 이 페이지로 전송됩니다.</div>
       </div>
       <div id="postInfo" class="post-info hidden">
         <span class="chip" id="galleryChip"></span>
@@ -258,9 +267,130 @@ body{padding-bottom:80px}
 </div>
 
 <script>
-// 백엔드 주소. Netlify 프론트 + Render(또는 기타) 백엔드 조합일 때 여기에 Render URL을 넣으세요.
-const BACKEND_URL = ""; // Render 단독 배포 시 비워두기 (same-origin). Netlify+Render 분리 시에만 Render URL 입력.
+// 백엔드 API는 북마클릿 방식 전환으로 더 이상 필수가 아닙니다 (로컬 fallback만).
+const BACKEND_URL = "";
 const API = BACKEND_URL || ((location.protocol === "file:") ? "http://localhost:3939" : "");
+const SITE_URL = location.origin + location.pathname;
+
+// ── 북마클릿 생성 & 주입 ──────────────────────────────
+const BOOKMARKLET_SRC = `(async()=>{
+  const m = location.search.match(/[?&]id=([^&]+)/);
+  const n = location.search.match(/[?&]no=(\\d+)/);
+  if (!m || !n) { alert('DC 게시글 페이지에서 실행하세요'); return; }
+  const id = m[1], no = n[1];
+  const html = document.documentElement.outerHTML;
+  const esn = (html.match(/name=['"]e_s_n_o['"]\\s+value=['"]([a-f0-9]+)['"]/) || [,''])[1];
+
+  // 상태 오버레이
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;top:20px;right:20px;background:#1a1410;color:#fff;padding:14px 18px;border-radius:10px;z-index:999999;font:14px sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);min-width:280px';
+  box.innerHTML = '<b>🎰 도로롱 수집 중…</b><div id="dororong-status" style="margin-top:8px;font-size:12px;opacity:.8">댓글 불러오는 중...</div>';
+  document.body.appendChild(box);
+  const st = (t) => document.getElementById('dororong-status').textContent = t;
+
+  const all = [];
+  const seen = new Set();
+  for (let p = 1; p <= 100; p++) {
+    st('댓글 페이지 ' + p + '…');
+    let j;
+    try {
+      const r = await fetch('/board/comment/', {
+        method: 'POST',
+        headers: { 'X-Requested-With':'XMLHttpRequest', 'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8' },
+        body: new URLSearchParams({ id, no, cmt_id:id, cmt_no:no, e_s_n_o:esn, comment_page:p, sort:'', prevCnt:'0', board_type:'' })
+      });
+      j = await r.json();
+    } catch(e) { break; }
+    const list = j.comments || [];
+    if (!list.length) break;
+    let added = 0;
+    for (const c of list) {
+      if (c.nicktype === 'COMMENT_BOY') continue;
+      if (seen.has(c.no)) continue;
+      seen.add(c.no);
+      const text = (c.memo || '').replace(/<img[^>]+alt=['"]([^'"]*)['"][^>]*>/gi, '[$1]').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').replace(/&nbsp;/g, ' ').trim();
+      all.push({
+        id: c.no,
+        name: c.name || c.user_id || '익명',
+        userId: c.user_id || '',
+        ip: c.ip || '',
+        type: c.user_id ? 'fixed' : (c.ip ? 'floating' : 'anonymous'),
+        text,
+        regDate: c.reg_date || ''
+      });
+      added++;
+    }
+    const total = j.total_cnt || 0;
+    if (total && all.length >= total) break;
+    if (added === 0) break;
+  }
+
+  // 갤로그 활동량 조회
+  const users = [...new Set(all.filter(c => c.userId).map(c => c.userId))];
+  const profiles = {};
+  for (let i = 0; i < users.length; i++) {
+    st('활동량 조회 ' + (i+1) + '/' + users.length);
+    const u = users[i];
+    try {
+      const h = await fetch('https://gallog.dcinside.com/' + encodeURIComponent(u), { credentials:'include' }).then(r => r.text());
+      const pm = h.match(/posting['"][^>]*>\\s*게시글\\s*<span[^>]*>\\(([\\d,]+)\\)/);
+      const cm = h.match(/comment['"][^>]*>\\s*댓글\\s*<span[^>]*>\\(([\\d,]+)\\)/);
+      profiles[u] = {
+        posts: pm ? parseInt(pm[1].replace(/,/g,'')) : 0,
+        replies: cm ? parseInt(cm[1].replace(/,/g,'')) : 0
+      };
+    } catch(e) { profiles[u] = { posts:0, replies:0 }; }
+  }
+
+  const title = (document.querySelector('.title_subject') || {}).textContent || '';
+  const gal = (document.querySelector('.title_headtext') || {}).textContent || id;
+
+  const data = {
+    site: 'dcinside', id, no,
+    title: title.trim(), galleryName: gal.trim(),
+    total: all.length, comments: all, profiles
+  };
+  st('데이터 전송…');
+  const json = JSON.stringify(data);
+  const b64 = btoa(unescape(encodeURIComponent(json)));
+  const target = '${SITE_URL}' + '#data=' + b64;
+  box.innerHTML = '<b>✓ 수집 완료 (' + all.length + '개 댓글)</b><div style="margin-top:8px;font-size:12px">새 탭에서 추첨기가 열립니다…</div>';
+  window.open(target, '_blank');
+  setTimeout(() => box.remove(), 3000);
+})();`;
+
+// 북마클릿 a 태그에 javascript: URI 주입
+{
+  const bm = document.getElementById("bookmarklet");
+  if (bm) bm.href = "javascript:" + encodeURIComponent(BOOKMARKLET_SRC);
+}
+
+// ── 페이지 로드 시 hash 데이터 파싱 ──────────────────
+(function loadFromHash() {
+  const m = location.hash.match(/[#&]data=([^&]+)/);
+  if (!m) return;
+  try {
+    const json = decodeURIComponent(escape(atob(m[1])));
+    const data = JSON.parse(json);
+    if (data.site && data.comments) {
+      history.replaceState(null, "", location.pathname); // clean URL
+      setTimeout(() => applyFetchedData(data), 50);
+    }
+  } catch (e) { console.error("hash parse fail", e); }
+})();
+
+function applyFetchedData(data) {
+  state.site = data.site;
+  state.comments = data.comments;
+  state.profiles = data.profiles || {};
+  document.getElementById("galleryChip").textContent = data.galleryName;
+  document.getElementById("commentCount").textContent = `· ${data.total}개 댓글`;
+  document.getElementById("postTitle").textContent = data.title;
+  document.getElementById("postInfo").classList.remove("hidden");
+  document.getElementById("profileStatus").textContent =
+    Object.keys(state.profiles).length ? `✓ ${Object.keys(state.profiles).length}명 활동량 포함됨` : "";
+  refreshPool();
+}
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const state = { site:null, comments:[], profiles:{}, method:"basic", logs:[] };
