@@ -222,10 +222,6 @@ body{padding-bottom:80px}
       </div>
     </section>
 
-    <section class="card fairness">
-      <h3 class="sec">공정성</h3>
-      <div class="hint" style="margin-top:0">매 추첨마다 새 시드가 자동 생성되며, 시드·참여자 지문·당첨자가 <b>추첨 기록</b> 탭에 모두 남습니다. 시드와 지문을 공유하면 누구나 동일 결과를 재현해 검증할 수 있습니다.</div>
-    </section>
   </div>
 
   <!-- 오른쪽: 명단 + 추첨 -->
@@ -298,6 +294,17 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const state = { site:null, comments:[], profiles:{}, method:"basic", logs:[] };
 
+// 순수 랜덤 셔플
+function randomShuffle(arr) {
+  const a = arr.slice();
+  for (let i=a.length-1; i>0; i--) {
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+
+// ── 조작방지: 비트코인 블록 해시 기반 엔트로피 ──
 async function sha256Hex(s) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
@@ -310,26 +317,26 @@ function mulberry32(seed) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
-async function seededShuffle(arr, seedStr) {
+async function deterministicPick(pool, n, seedStr) {
   const h = await sha256Hex(seedStr);
-  const seedNum = parseInt(h.slice(0,8), 16);
-  const rng = mulberry32(seedNum);
-  const a = arr.slice();
+  const rng = mulberry32(parseInt(h.slice(0,8), 16));
+  const a = pool.slice();
   for (let i=a.length-1; i>0; i--) {
     const j = Math.floor(rng()*(i+1));
     [a[i],a[j]] = [a[j],a[i]];
   }
-  return a;
+  return a.slice(0, n);
 }
 async function poolFingerprint(pool) {
-  const data = pool.map(c => `${c.userId||c.name}::${c.id||c.text}`).join("|");
-  return (await sha256Hex(data)).slice(0,16);
+  const s = pool.map(c => c.userId || c.name).sort().join("|");
+  return (await sha256Hex(s)).slice(0, 16);
 }
-// 이전 당첨자 ID 집합
-function pastWinnerKeys() {
-  const s = new Set();
-  state.logs.forEach(l => l.winners.forEach(w => s.add(w.key)));
-  return s;
+async function getBitcoinBlock() {
+  // mempool.space 공개 API — CORS 허용됨
+  const h = await fetch("https://mempool.space/api/blocks/tip/height").then(r=>r.text());
+  const height = parseInt(h);
+  const hash = (await fetch("https://mempool.space/api/blocks/tip/hash").then(r=>r.text())).trim();
+  return { height, hash };
 }
 
 // 탭 전환
@@ -356,34 +363,43 @@ function renderLogs() {
   if (!state.logs.length) { el.innerHTML = '<div class="muted" style="padding:14px">아직 추첨 기록이 없습니다.</div>'; return; }
   el.innerHTML = state.logs.slice().reverse().map((l,idx) => {
     const num = state.logs.length - idx;
-    const verifyId = `vbtn-${l.id}`;
-    const statusId = `vstat-${l.id}`;
+    const ent = l.entropy || {};
+    let entropyHtml = "";
+    if (ent.source === "bitcoin") {
+      const short = ent.hash ? ent.hash.slice(0, 16) + "…" : "";
+      entropyHtml = `<div class="log-meta"><b>🔗 엔트로피 소스</b> 비트코인 블록 #${ent.height}<br/>
+        <b>블록 해시</b> <code style="font-size:10px">${esc(short)}</code>
+        <a href="https://mempool.space/ko/block/${esc(ent.hash)}" target="_blank" style="color:var(--accent);margin-left:6px;font-size:10px">↗ 탐색기에서 검증</a><br/>
+        <b>참여자 지문</b> <code style="font-size:10px">${esc(l.poolFp||"")}</code></div>`;
+    } else if (ent.source === "time") {
+      entropyHtml = `<div class="log-meta"><b>⚠ 로컬 랜덤</b> (블록 조회 실패 폴백)</div>`;
+    }
     return `<div class="log-entry">
       <div class="log-head">
         <strong>#${num} · ${esc(l.method)}</strong>
         <span class="log-time">${fmtTime(l.ts)}</span>
       </div>
       <div class="log-winners">${l.winners.map(w => `<span class="win">${esc(w.name)}</span>`).join("")}</div>
-      <div class="log-meta">
-        <b>시드</b> ${esc(l.seed)}<br/>
-        <b>참여자 지문</b> ${esc(l.poolFp)} <span style="color:#aaa">(${l.poolSize}명)</span>
-      </div>
+      <div class="log-meta"><span style="color:#aaa">후보 ${l.poolSize}명 중 ${l.winners.length}명</span></div>
+      ${entropyHtml}
       <div class="row" style="margin-top:6px">
-        <button class="ghost" id="${verifyId}" style="padding:4px 10px;font-size:11px">재검증</button>
-        <span class="log-verify" id="${statusId}"></span>
+        <button class="ghost" data-vid="${l.id}" style="padding:4px 10px;font-size:11px">재검증</button>
+        <span class="log-verify" id="vstat-${l.id}"></span>
       </div>
     </div>`;
   }).join("");
-  // attach verify handlers
-  state.logs.forEach(l => {
-    const btn = document.getElementById(`vbtn-${l.id}`);
-    if (!btn) return;
+  // 재검증 버튼 핸들러
+  el.querySelectorAll("[data-vid]").forEach(btn => {
     btn.onclick = async () => {
-      const stat = document.getElementById(`vstat-${l.id}`);
-      const reshuffled = await seededShuffle(l.snapshotPool, l.seed);
-      const repick = reshuffled.slice(0, l.winners.length).map(c => c.userId||c.name).join("|");
-      const orig = l.winners.map(w => w.key).join("|");
-      const ok = repick === orig;
+      const id = btn.dataset.vid;
+      const log = state.logs.find(l => l.id === id);
+      if (!log) return;
+      const stat = document.getElementById(`vstat-${id}`);
+      stat.textContent = "계산 중…";
+      const rePick = await deterministicPick(log.snapshotPool, log.winners.length, log.seed);
+      const a = rePick.map(p => p.userId || p.name).join("|");
+      const b = log.winners.map(w => w.key).join("|");
+      const ok = a === b;
       stat.textContent = ok ? "✅ 동일 결과 재현됨" : "❌ 결과 불일치";
       stat.className = "log-verify" + (ok ? "" : " bad");
     };
@@ -547,34 +563,50 @@ document.querySelectorAll('input[type="number"]').forEach(el => {
 });
 
 $("drawBtn").onclick = async () => {
-  const fullPool = getPool();
-  const past = pastWinnerKeys();
-  // 이전 당첨자는 후보에서 제외
-  let pool = fullPool.filter(c => !past.has(c.userId || c.name));
-  if (pool.length === 0) {
-    if (!confirm("모든 후보가 이미 당첨되었습니다. 기록을 초기화하고 다시 추첨할까요?")) return;
-    state.logs = []; renderLogs();
-    pool = fullPool;
-  }
+  const pool = getPool();
+  if (!pool.length) return;
   const n = Math.min(Math.max(1, parseInt($("winnerCount").value)||1), pool.length);
-  const seed = Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
-  const shuffled = await seededShuffle(pool, seed);
-  const picked = shuffled.slice(0, n);
+
+  if (state.method === "card") {
+    $("resultModal").classList.remove("hidden");
+    cardInteractive(pool, n);
+    return;
+  }
+
+  // 공정성 엔트로피: 비트코인 최신 블록 해시 + 현재 시각 조합
+  $("drawBtn").disabled = true; $("drawBtn").textContent = "블록 조회 중…";
+  let entropy;
+  try {
+    const blk = await getBitcoinBlock();
+    entropy = { source: "bitcoin", height: blk.height, hash: blk.hash, ts: Date.now() };
+  } catch (e) {
+    // 블록 조회 실패 시 시각+Math.random 폴백 (그래도 로그 남음)
+    entropy = { source: "time", hash: Math.random().toString(36).slice(2) + Date.now().toString(36), ts: Date.now() };
+  }
+  $("drawBtn").disabled = false; $("drawBtn").textContent = "🎲 추첨 시작";
+
   const fp = await poolFingerprint(pool);
-  // 로그 기록
+  const seed = `${entropy.hash}::${fp}::${entropy.ts}`;
+  const picked = await deterministicPick(pool, n, seed);
+
+  recordLog({ method: state.method, pool, picked, entropy, fp, seed });
+  showResult(picked, pool);
+};
+
+function recordLog({ method, pool, picked, entropy, fp, seed }) {
   state.logs.push({
     id: Date.now() + "-" + Math.random().toString(36).slice(2,6),
     ts: Date.now(),
-    method: state.method,
-    seed,
-    poolFp: fp,
+    method,
     poolSize: pool.length,
+    poolFp: fp,
+    entropy,
+    seed,
     snapshotPool: pool,
     winners: picked.map(p => ({ key: p.userId||p.name, name: p.name, text: p.text })),
   });
   renderLogs();
-  showResult(picked, pool, seed);
-};
+}
 
 function showResult(picked, pool, seed) {
   $("resultModal").classList.remove("hidden");
@@ -586,9 +618,7 @@ function showResult(picked, pool, seed) {
   else if (m === "battle") battleAnim(picked, pool, seed);
 }
 
-function seedFoot(seed) {
-  return seed ? `<div class="muted" style="margin-top:14px;font-family:ui-monospace,monospace;font-size:11px">시드: ${esc(seed)}</div>` : "";
-}
+function seedFoot() { return ""; } // 엔트로피 정보는 로그 탭에서 확인
 
 function renderResult(picked, seed) {
   let body;
@@ -673,82 +703,86 @@ function slotAnim(picked, pool, seed) {
   setTimeout(() => renderResult(picked, seed), 5300);
 }
 
-// ── 카드뽑기 ─────────────────────────────────────
-function cardAnim(picked, pool, seed) {
-  const N = Math.min(Math.max(pool.length, 6), 12);  // 6~12장
-  const target = picked[0];
-  // 나머지 카드용 pool
-  const others = pool.filter(c => (c.userId||c.name) !== (target.userId||target.name))
-                     .sort(()=>Math.random()-0.5).slice(0, N-1);
-  const cards = [...others, target].sort(()=>Math.random()-0.5);
+// ── 카드뽑기 (유저 클릭이 당첨 결정) ─────────────
+function cardInteractive(pool, n) {
+  // 풀 전원을 카드로 (순서는 랜덤)
+  const cards = pool.slice().sort(()=>Math.random()-0.5);
   const targetIdx = cards.indexOf(target);
 
+  // 카드 수에 따라 크기 조정 (20장 이하 크게, 50장 이하 중간, 그 이상 소형)
+  const cw = cards.length <= 20 ? 80 : cards.length <= 50 ? 56 : 40;
+  const ch = Math.round(cw * 1.5);
+  const fs = cards.length <= 20 ? 11 : cards.length <= 50 ? 9 : 8;
   const cardsHtml = cards.map((c,i) => `
     <div class="card-el" data-i="${i}" style="
-      width:80px;height:120px;background:linear-gradient(135deg,#3a2a55,#5b6f8a);
+      width:${cw}px;height:${ch}px;background:linear-gradient(135deg,#3a2a55,#5b6f8a);
       border:2px solid #ffd66b;border-radius:10px;
       display:flex;align-items:center;justify-content:center;
       color:#fff;font-weight:800;cursor:pointer;position:relative;
       transform-style:preserve-3d;transition:transform .6s;user-select:none">
       <div class="face-back" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-        backface-visibility:hidden;font-size:32px">🂠</div>
+        backface-visibility:hidden;font-size:${Math.round(cw*0.4)}px">🂠</div>
       <div class="face-front" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
         background:linear-gradient(135deg,#fff,#ffe1ec);color:#e91e63;border-radius:8px;
-        font-size:11px;padding:6px;text-align:center;backface-visibility:hidden;transform:rotateY(180deg)">
-        ${esc(c.name).slice(0,8)}
+        font-size:${fs}px;padding:4px;text-align:center;backface-visibility:hidden;transform:rotateY(180deg);word-break:break-all">
+        ${esc(c.name).slice(0,10)}
       </div>
     </div>`).join("");
   $("resultBody").innerHTML = `
     <div style="font-size:13px;color:#888;margin-bottom:10px">🃏 카드뽑기</div>
-    <div id="cardBox" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;padding:14px;
-      background:#1a1410;border-radius:12px">
+    <div id="cardBox" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:12px;
+      background:#1a1410;border-radius:12px;max-height:60vh;overflow:auto">
       ${cardsHtml}
     </div>
-    <div id="cardHint" style="margin-top:10px;font-size:13px;color:var(--muted)">카드를 클릭해 뽑으세요</div>`;
+    <div id="cardHint" style="margin-top:10px;font-size:13px;color:var(--muted)">
+      카드 ${n}장을 골라 당첨자를 뽑으세요 <span id="pickedCount">(0/${n})</span>
+    </div>`;
 
-  let revealed = false;
+  const chosenIdx = [];
   document.querySelectorAll(".card-el").forEach((el, i) => {
     el.onclick = () => {
-      if (revealed) return;
-      revealed = true;
-      // 선택한 카드 자리에 타겟 카드 실제 내용을 먼저 스왑
-      const chosen = cards[i];
-      // 모든 카드 flip 순차 공개
-      document.querySelectorAll(".card-el").forEach((card, j) => {
-        setTimeout(() => {
-          card.style.transform = "rotateY(180deg)";
-          if (j === targetIdx) card.style.boxShadow = "0 0 30px #ffd66b";
-        }, j === i ? 0 : 300 + (j * 80));
-      });
-      $("cardHint").innerHTML = chosen === target
-        ? `✨ <b style="color:var(--accent)">첫 뽑기에 당첨!</b>`
-        : `당신의 뽑기: <b>${esc(chosen.name)}</b> · 당첨: <b style="color:var(--accent)">${esc(target.name)}</b>`;
-      setTimeout(() => renderResult(picked, seed), 1500 + cards.length * 80);
+      if (chosenIdx.includes(i)) return;
+      if (chosenIdx.length >= n) return;
+      chosenIdx.push(i);
+      el.style.transform = "rotateY(180deg)";
+      el.style.boxShadow = "0 0 24px #ffd66b";
+      document.getElementById("pickedCount").textContent = `(${chosenIdx.length}/${n})`;
+      if (chosenIdx.length === n) {
+        // 선택 완료 — 나머지 카드도 순차 공개 (결과 확인용)
+        document.querySelectorAll(".card-el").forEach((card, j) => {
+          if (chosenIdx.includes(j)) return;
+          setTimeout(() => { card.style.transform = "rotateY(180deg)"; card.style.opacity = "0.5"; }, 200 + j * 40);
+        });
+        const picked = chosenIdx.map(idx => cards[idx]);
+        recordLog({ method: "card", pool, picked,
+          entropy: { source: "user-click", ts: Date.now() }, fp: "", seed: "" });
+        $("cardHint").innerHTML = `🏆 ${picked.map(p => `<b>${esc(p.name)}</b>`).join(", ")} 당첨!`;
+        setTimeout(() => renderResult(picked), 800 + cards.length * 40);
+      }
     };
   });
 
-  // 유저가 3초 내에 안 고르면 자동 뽑기 (결정적: 타겟 아닌 랜덤 카드)
+  // 유저가 8초 내에 아무것도 안 고르면 자동으로 n장 랜덤 뽑기
   setTimeout(() => {
-    if (!revealed) {
-      const autoIdx = Math.floor(Math.random() * cards.length);
-      document.querySelectorAll(".card-el")[autoIdx].click();
+    if (chosenIdx.length === 0) {
+      const els = document.querySelectorAll(".card-el");
+      const idxs = [...Array(cards.length).keys()].sort(()=>Math.random()-0.5).slice(0, n);
+      idxs.forEach((idx, k) => setTimeout(() => els[idx].click(), k * 400));
     }
-  }, 4500);
+  }, 8000);
 }
+
+// 배틀로얄 등 다른 모드에서 cardAnim 이름으로 호출되면 기본 결과만 표시
+function cardAnim(picked, pool, seed) { renderResult(picked, seed); }
 
 // ── 배틀로얄 ─────────────────────────────────────
 function battleAnim(picked, pool, seed) {
   const W = 480, H = 420;
-  // 최대 12명까지만 배틀 참가 (가시성)
   const target = picked[0];
   const targetKey = target.userId || target.name;
-  const participants = pool.filter(c => (c.userId||c.name) !== targetKey)
-                           .sort(()=>Math.random()-0.5).slice(0, 11);
-  participants.push(target);
+  // 풀 전원 참가 (제한 없음)
+  const participants = pool.slice().sort(()=>Math.random()-0.5);
   const N = participants.length;
-  // 셔플 — target이 꼭 마지막 자리 아니어도 됨
-  participants.sort(()=>Math.random()-0.5);
-  const targetIdx = participants.findIndex(c => (c.userId||c.name) === targetKey);
 
   $("resultBody").innerHTML = `
     <div style="font-size:13px;color:#888;margin-bottom:10px">⚔️ 배틀로얄 — 라스트 원 스탠딩</div>
