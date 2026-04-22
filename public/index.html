@@ -403,8 +403,9 @@ $("loadBtn").onclick = async () => {
     $("postTitle").textContent = data.title;
     $("postInfo").classList.remove("hidden");
     refreshPool();
-    autoLoadProfiles();
-  } catch (e) { $("loadErr").textContent = "실패: " + e.message + " (서버가 켜져있는지 확인: python server.py)"; }
+    // 활동량은 눔계 필터가 켜져있을 때만 자동 조회 (DC 과다요청 방지)
+    if ($("gallogOn").checked) autoLoadProfiles();
+  } catch (e) { $("loadErr").textContent = "실패: " + e.message; }
   finally { $("loadBtn").disabled = false; $("loadBtn").textContent = "↻ 가져오기"; }
 };
 
@@ -416,14 +417,19 @@ document.querySelectorAll(".mcard").forEach(b => {
 });
 
 $("gallogOn").onchange = () => {
-  $("gallogPanel").classList.toggle("hidden", !$("gallogOn").checked);
+  const on = $("gallogOn").checked;
+  $("gallogPanel").classList.toggle("hidden", !on);
+  // 필터를 처음 켤 때 아직 활동량 미조회면 자동 조회
+  if (on && state.comments.length && !Object.keys(state.profiles).length) {
+    autoLoadProfiles();
+  }
   refreshPool();
 };
 
 async function autoLoadProfiles() {
   const users = [...new Set(state.comments.filter(c => c.userId).map(c => c.userId))];
   if (!users.length) return;
-  $("profileStatus").textContent = `자동 조회 중... (${users.length}명)`;
+  $("profileStatus").textContent = `조회 중... (${users.length}명, 캐시 활용)`;
   $("loadProfiles").disabled = true;
   try {
     const res = await fetch(API + "/api/profiles", {
@@ -433,7 +439,8 @@ async function autoLoadProfiles() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "실패");
     state.profiles = data.profiles;
-    $("profileStatus").textContent = `✓ ${users.length}명 활동량 조회 완료`;
+    const ca = data.cached || 0, fe = data.fetched || 0;
+    $("profileStatus").textContent = `✓ ${users.length}명 완료 (캐시 ${ca} / 신규 ${fe})`;
     refreshPool();
   } catch (e) { $("profileStatus").textContent = "조회 실패: " + e.message; }
   finally { $("loadProfiles").disabled = false; }

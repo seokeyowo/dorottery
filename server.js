@@ -47,6 +47,26 @@ async function fetchText(url, headers = {}) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 간단한 LRU+TTL 캐시 (갤로그 user_id → {posts, replies})
+const CACHE_TTL = 10 * 60 * 1000; // 10분
+const CACHE_MAX = 500;
+const profileCache = new Map();
+function cacheGet(uid) {
+  const e = profileCache.get(uid);
+  if (!e) return null;
+  if (Date.now() - e.ts > CACHE_TTL) { profileCache.delete(uid); return null; }
+  // LRU: 재삽입으로 최신화
+  profileCache.delete(uid); profileCache.set(uid, e);
+  return e.data;
+}
+function cacheSet(uid, data) {
+  if (profileCache.size >= CACHE_MAX) {
+    const firstKey = profileCache.keys().next().value;
+    profileCache.delete(firstKey);
+  }
+  profileCache.set(uid, { ts: Date.now(), data });
+}
+
 async function fetchDcPost(url) {
   const info = parseDcUrl(url);
   if (!info.id || !info.no) throw new Error("DC URL에서 id/no를 찾지 못했습니다.");
@@ -176,19 +196,31 @@ app.post("/api/profiles", async (req, res) => {
   const { site, users } = req.body || {};
   if (!Array.isArray(users)) return res.status(400).json({ error: "users 배열 필요" });
   if (site !== "dcinside") return res.status(400).json({ error: "지원하지 않는 사이트" });
-  // 동시 2개 + 각 요청 사이 300ms 간격 → DC 봇차단 회피
   const profiles = {};
-  const queue = users.slice();
+  const toFetch = [];
+  // 캐시 먼저 확인
+  for (const uid of users) {
+    const hit = cacheGet(uid);
+    if (hit) profiles[uid] = hit;
+    else toFetch.push(uid);
+  }
+  const cached = Object.keys(profiles).length;
+  console.log(`[profiles] ${users.length}명 요청 / 캐시 ${cached} / 신규 ${toFetch.length}`);
+
+  // 신규만 동시 2개 + 300ms 딜레이로 조회
+  const queue = toFetch.slice();
   const worker = async () => {
     while (queue.length) {
       const uid = queue.shift();
-      profiles[uid] = await fetchDcGallog(uid);
+      const data = await fetchDcGallog(uid);
+      profiles[uid] = data;
+      cacheSet(uid, data);
       await sleep(300);
     }
   };
   try {
     await Promise.all(Array.from({ length: 2 }, worker));
-    res.json({ profiles });
+    res.json({ profiles, cached, fetched: toFetch.length });
   } catch (e) {
     console.error("gallog bulk fail:", e.message);
     res.status(503).json({ error: e.message, profiles });
