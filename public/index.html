@@ -89,7 +89,11 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff;fo
 button.primary:hover{background:#4a5d75}
 button.ghost{background:transparent}
 button.lg{padding:11px 20px;font-size:14px;font-weight:700}
-button:disabled{opacity:.45;cursor:not-allowed}
+button:disabled{opacity:.55;cursor:not-allowed;filter:grayscale(40%)}
+button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.4);
+  border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
@@ -406,13 +410,28 @@ function renderLogs() {
   });
 }
 
+let loading = false;
 $("loadBtn").onclick = async () => {
+  if (loading) return;
   const url = $("postUrl").value.trim();
   $("loadErr").textContent = "";
   if (!url) { $("loadErr").textContent = "URL을 입력하세요."; return; }
-  $("loadBtn").disabled = true; $("loadBtn").textContent = "가져오는 중...";
+  loading = true;
+  $("loadBtn").disabled = true;
+  $("postUrl").disabled = true;
+  // 경과 시간 표시
+  const startAt = Date.now();
+  let dots = 0;
+  const tick = setInterval(() => {
+    dots = (dots + 1) % 4;
+    const sec = Math.floor((Date.now() - startAt) / 1000);
+    $("loadBtn").innerHTML = `<span class="spinner"></span> 가져오는 중${".".repeat(dots)} <span style="opacity:.7">${sec}s</span>`;
+  }, 300);
+  // 60초 타임아웃
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort(), 60_000);
   try {
-    const res = await fetch(API + "/api/fetch?url=" + encodeURIComponent(url));
+    const res = await fetch(API + "/api/fetch?url=" + encodeURIComponent(url), { signal: ctrl.signal });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "조회 실패");
     state.site = data.site; state.comments = data.comments; state.profiles = {};
@@ -421,10 +440,21 @@ $("loadBtn").onclick = async () => {
     $("postTitle").textContent = data.title;
     $("postInfo").classList.remove("hidden");
     refreshPool();
-    // 활동량은 눔계 필터가 켜져있을 때만 자동 조회 (DC 과다요청 방지)
     if ($("gallogOn").checked) autoLoadProfiles();
-  } catch (e) { $("loadErr").textContent = "실패: " + e.message; }
-  finally { $("loadBtn").disabled = false; $("loadBtn").textContent = "↻ 가져오기"; }
+  } catch (e) {
+    if (e.name === "AbortError") {
+      $("loadErr").textContent = "60초 초과 — DC가 응답하지 않습니다. 잠시 후 재시도하세요.";
+    } else {
+      $("loadErr").textContent = "실패: " + e.message;
+    }
+  } finally {
+    clearTimeout(timeoutId);
+    clearInterval(tick);
+    loading = false;
+    $("loadBtn").disabled = false;
+    $("postUrl").disabled = false;
+    $("loadBtn").textContent = "불러오기";
+  }
 };
 
 document.querySelectorAll(".mcard").forEach(b => {
