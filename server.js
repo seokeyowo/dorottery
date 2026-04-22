@@ -230,13 +230,24 @@ app.post("/api/profiles", async (req, res) => {
 app.listen(PORT, HOST, () => {
   const url = `http://localhost:${PORT}`;
   console.log(`도로롱 로터리 → ${url}`);
+  console.log("  (이 창은 자동으로 최소화됩니다. 종료하려면 창을 닫으세요)");
   if (HOST === "127.0.0.1") {
-    console.log("  브라우저가 1초 후 자동으로 열립니다. 종료: 이 창 닫기.");
+    const { exec } = require("child_process");
+    // 브라우저 자동 실행
     setTimeout(() => {
-      const { exec } = require("child_process");
       const cmd = process.platform === "win32" ? `start "" "${url}"`
         : process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;
       exec(cmd);
-    }, 1000);
+    }, 800);
+    // 콘솔 창 최소화 (Windows 전용) — ShowWindow(SW_MINIMIZE=6)
+    if (process.platform === "win32") {
+      setTimeout(() => {
+        const ps = `$s='[DllImport(\\"user32.dll\\")] public static extern bool ShowWindow(int h,int s);'; ` +
+                   `$t=Add-Type -MemberDefinition $s -Name Win -Namespace X -PassThru; ` +
+                   `$h=(Get-Process -Id ${process.pid}).MainWindowHandle; ` +
+                   `[X.Win]::ShowWindow($h, 6)`;
+        exec(`powershell -NoProfile -WindowStyle Hidden -Command "${ps}"`, { windowsHide: true });
+      }, 1500);
+    }
   }
 });
