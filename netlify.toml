@@ -1,0 +1,11 @@
+# Netlify: 정적 프론트(/public)만 배포.
+# 백엔드는 Render 등 다른 호스트에서 운영하고 public/index.html의 BACKEND_URL에 넣으세요.
+[build]
+  publish = "public"
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
