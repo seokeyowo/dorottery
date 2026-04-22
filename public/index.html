@@ -332,14 +332,24 @@ const BOOKMARKLET_SRC = `(async()=>{
     st('활동량 조회 ' + (i+1) + '/' + users.length);
     const u = users[i];
     try {
-      const h = await fetch('https://gallog.dcinside.com/' + encodeURIComponent(u), { credentials:'include' }).then(r => r.text());
-      const pm = h.match(/posting['"][^>]*>\\s*게시글\\s*<span[^>]*>\\(([\\d,]+)\\)/);
-      const cm = h.match(/comment['"][^>]*>\\s*댓글\\s*<span[^>]*>\\(([\\d,]+)\\)/);
-      profiles[u] = {
-        posts: pm ? parseInt(pm[1].replace(/,/g,'')) : 0,
-        replies: cm ? parseInt(cm[1].replace(/,/g,'')) : 0
+      const h = await fetch('https://gallog.dcinside.com/' + encodeURIComponent(u)).then(r => r.text());
+      const grab = (pats) => {
+        for (const re of pats) { const m = h.match(re); if (m) return parseInt(m[1].replace(/,/g,'')) || 0; }
+        return 0;
       };
-    } catch(e) { profiles[u] = { posts:0, replies:0 }; }
+      const posts = grab([
+        /location\\.href='\\/[^']+\\/posting'[^>]*>\\s*게시글\\s*<span[^>]*>\\(([\\d,]+)\\)/,
+        /\\/posting['"][^>]*>\\s*게시글[^<]*<span[^>]*>\\(([\\d,]+)\\)/,
+        /게시글\\s*<span[^>]*class=['"]num['"][^>]*>\\(([\\d,]+)\\)/
+      ]);
+      const replies = grab([
+        /location\\.href='\\/[^']+\\/comment'[^>]*>\\s*댓글\\s*<span[^>]*>\\(([\\d,]+)\\)/,
+        /\\/comment['"][^>]*>\\s*댓글[^<]*<span[^>]*>\\(([\\d,]+)\\)/,
+        /댓글\\s*<span[^>]*class=['"]num['"][^>]*>\\(([\\d,]+)\\)/
+      ]);
+      profiles[u] = { posts, replies };
+      if (!posts && !replies) console.warn('[도로롱] 갤로그 파싱 실패:', u, 'HTML', h.length, '바이트');
+    } catch(e) { console.error('[도로롱] 갤로그 요청 실패:', u, e); profiles[u] = { posts:0, replies:0 }; }
   }
 
   const title = (document.querySelector('.title_subject') || {}).textContent || '';
