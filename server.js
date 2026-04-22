@@ -15,8 +15,8 @@ const ROOT = fs.existsSync(path.join(__dirname, "public"))
   : path.join(path.dirname(process.execPath), "public");
 
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 " +
+  "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
 // ── DC인사이드 스크래퍼 ──────────────────────────────────
 function matchDc(url) {
@@ -71,71 +71,92 @@ async function fetchDcPost(url) {
   const info = parseDcUrl(url);
   if (!info.id || !info.no) throw new Error("DC URL에서 id/no를 찾지 못했습니다.");
 
-  const html = await fetchText(url);
-  const $ = cheerio.load(html);
-  const title = $(".title_subject").text().trim() || $("title").text().trim();
-  const galleryName = $(".title_headtext").text().trim() || info.id;
-  const esnoMatch = html.match(/name=['"]e_s_n_o['"]\s+value=['"]([0-9a-f]+)['"]/i);
-  const e_s_n_o = esnoMatch ? esnoMatch[1] : "";
+  // 모바일 DC 사용 (PC 쪽은 봇 차단 강화됨)
+  const mobileUrl = `https://m.dcinside.com/board/${info.id}/${info.no}`;
+  const sessionCookies = { jar: new Map() };
+  const postRes = await fetch(mobileUrl, {
+    headers: { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9" },
+    redirect: "follow",
+  });
+  if (!postRes.ok) throw new Error(`HTTP ${postRes.status} 게시글 페이지`);
+  // Set-Cookie 수집
+  const setCookie = postRes.headers.getSetCookie ? postRes.headers.getSetCookie() : [postRes.headers.get("set-cookie")].filter(Boolean);
+  const cookieHeader = setCookie.map(s => s.split(";")[0]).join("; ");
+  const html = await postRes.text();
 
-  const comments = await fetchAllComments({ ...info, e_s_n_o, refererUrl: url });
+  // CSRF 토큰 추출
+  const csrfMatch = html.match(/meta\s+name=['"]csrf-token['"]\s+content=['"]([^'"]+)['"]/i);
+  const csrf = csrfMatch ? csrfMatch[1] : "";
+  if (!csrf) throw new Error("CSRF 토큰 추출 실패");
+
+  // 제목
+  const $ = cheerio.load(html);
+  let title = $(".tit").first().text().trim() || $("title").text().trim();
+  // 제목에서 갤러리명 분리
+  const titleMatch = title.match(/^(.+?)\s*-\s*([^-]+?갤러리)$/);
+  const galleryName = titleMatch ? titleMatch[2].trim() : info.id;
+  if (titleMatch) title = titleMatch[1].trim();
+
+  const comments = await fetchAllComments({ id: info.id, no: info.no, csrf, cookieHeader, refererUrl: mobileUrl });
   return { site: "dcinside", ...info, title, galleryName, total: comments.length, comments };
 }
 
-async function fetchAllComments({ id, no, e_s_n_o, refererUrl }) {
+async function fetchAllComments({ id, no, csrf, cookieHeader, refererUrl }) {
   const out = [];
   const seen = new Set();
   for (let page = 1; page <= 100; page++) {
-    if (page > 1) await sleep(250); // 댓글 페이지 간 딜레이
-    const body = new URLSearchParams({
-      id, no, cmt_id: id, cmt_no: no,
-      e_s_n_o, comment_page: String(page),
-      sort: "", prevCnt: "0", board_type: "",
-    });
-    let j;
+    if (page > 1) await sleep(250);
+    let html;
     try {
-      const res = await fetch("https://gall.dcinside.com/board/comment/", {
+      const res = await fetch("https://m.dcinside.com/ajax/response-comment", {
         method: "POST",
         headers: {
           "User-Agent": UA,
-          "Accept": "application/json, text/javascript, */*; q=0.01",
+          "Accept": "text/html, */*; q=0.01",
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
           "X-Requested-With": "XMLHttpRequest",
+          "X-CSRF-TOKEN": csrf,
           "Referer": refererUrl,
-          "Origin": "https://gall.dcinside.com",
+          "Origin": "https://m.dcinside.com",
+          "Cookie": cookieHeader,
         },
-        body: body.toString(),
+        body: new URLSearchParams({ id, no, cpage: String(page), managerskill: "", csort: "", permission_pw: "" }).toString(),
       });
       if (!res.ok) break;
-      j = await res.json();
+      html = await res.text();
     } catch { break; }
-    const list = j.comments || [];
-    if (!list.length) break;
-    let added = 0;
-    for (const c of list) {
-      if (c.nicktype === "COMMENT_BOY") continue;
-      if (seen.has(c.no)) continue;
-      seen.add(c.no);
-      const text = String(c.memo || "")
-        .replace(/<img[^>]+alt=['"]([^'"]*)['"][^>]*>/gi, "[$1]")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      out.push({
-        id: c.no,
-        name: c.name || c.user_id || "익명",
-        userId: c.user_id || "",
-        ip: c.ip || "",
-        type: c.user_id ? "fixed" : (c.ip ? "floating" : "anonymous"),
-        text,
-        regDate: c.reg_date || "",
-      });
-      added++;
-    }
-    const total = j.total_cnt || 0;
+    if (!html || html.length < 100) break;
+
+    const $ = cheerio.load(html);
+    let addedThisPage = 0;
+    $("li.comment, li.comment-add").each((_, el) => {
+      const $el = $(el);
+      const cid = $el.attr("no");
+      if (!cid || seen.has(cid)) return;
+      seen.add(cid);
+      const name = $el.find(".nick").first().text().trim() || "익명";
+      // 고닉: /gallog/{user_id} 링크 존재
+      let userId = "";
+      const gallogA = $el.find("a[href*='/gallog/']").attr("href") || "";
+      const m = gallogA.match(/\/gallog\/([^/?"]+)/);
+      if (m) userId = m[1];
+      // IP: 유동 ([0-9]+.[0-9]+) — date 앞에 표시
+      const ipText = $el.find(".ip").text().trim();
+      // 텍스트
+      const text = $el.find(".txt").text().replace(/\s+/g, " ").trim();
+      const date = $el.find(".date").text().trim();
+      // 광고성 댓글
+      if ($el.find(".nick").hasClass("comment_boy")) return;
+      const type = userId ? "fixed" : (ipText ? "floating" : "anonymous");
+      out.push({ id: cid, name, userId, ip: ipText, type, text, regDate: date });
+      addedThisPage++;
+    });
+
+    // 총 댓글 수 확인 (있으면)
+    const totalInput = $("#reple_totalCnt").attr("value");
+    const total = totalInput ? parseInt(totalInput) : 0;
     if (total && out.length >= total) break;
-    if (added === 0) break;
+    if (addedThisPage === 0) break;
   }
   return out;
 }
@@ -143,7 +164,8 @@ async function fetchAllComments({ id, no, e_s_n_o, refererUrl }) {
 async function fetchDcGallog(userId) {
   if (!userId) return { posts: 0, replies: 0 };
   try {
-    const html = await fetchText(`https://gallog.dcinside.com/${encodeURIComponent(userId)}`);
+    // 모바일 갤로그 사용 (PC 버전은 봇차단됨)
+    const html = await fetchText(`https://m.dcinside.com/gallog/${encodeURIComponent(userId)}`);
     const grab = (pats) => {
       for (const re of pats) {
         const m = html.match(re);
@@ -152,18 +174,16 @@ async function fetchDcGallog(userId) {
       return 0;
     };
     const posts = grab([
-      /location\.href='\/[^']+\/posting'[^>]*>\s*게시글\s*<span[^>]*>\(([\d,]+)\)/,
-      /\/posting['"][^>]*>\s*게시글[^<]*<span[^>]*>\(([\d,]+)\)/,
-      /게시글\s*<span[^>]*class=['"]num['"][^>]*>\(([\d,]+)\)/,
+      /(?:게시물|게시글)\s*<span[^>]*class=['"]ct2['"][^>]*>\(([\d,]+)\)/,
+      /menu=G_all[^>]*>\s*(?:게시물|게시글)\s*<span[^>]*>\(([\d,]+)\)/,
     ]);
     const replies = grab([
-      /location\.href='\/[^']+\/comment'[^>]*>\s*댓글\s*<span[^>]*>\(([\d,]+)\)/,
-      /\/comment['"][^>]*>\s*댓글[^<]*<span[^>]*>\(([\d,]+)\)/,
-      /댓글\s*<span[^>]*class=['"]num['"][^>]*>\(([\d,]+)\)/,
+      /댓글\s*<span[^>]*class=['"]ct2['"][^>]*>\(([\d,]+)\)/,
+      /menu=R_all[^>]*>\s*댓글\s*<span[^>]*>\(([\d,]+)\)/,
     ]);
     return { posts, replies };
   } catch (e) {
-    if (e.message && e.message.includes("DC 차단")) throw e; // 전체 중단
+    if (e.message && e.message.includes("DC 차단")) throw e;
     return { posts: 0, replies: 0, error: e.message };
   }
 }
