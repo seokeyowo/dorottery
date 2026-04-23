@@ -8,6 +8,14 @@ if (typeof globalThis.File === "undefined") {
   globalThis.File = require("buffer").File;
 }
 
+// 프로필 스트림 중 네트워크 에러 등으로 프로세스가 종료되지 않도록 전역 가드
+process.on("unhandledRejection", (err) => {
+  console.error("[unhandledRejection]", err && err.message ? err.message : err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err && err.message ? err.message : err);
+});
+
 const PORT = Number(process.env.PORT) || 3939;
 const HOST = process.env.HOST || (process.env.PORT ? "0.0.0.0" : "127.0.0.1");
 
@@ -40,11 +48,27 @@ async function fetchText(url, headers = {}, opts = {}) {
   const maxDelay = opts.maxDelay ?? 3500;
   let lastErr = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url, {
-      headers: { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9", ...headers },
-      redirect: "follow",
-    });
-    if (res.ok) return await res.text();
+    let res;
+    try {
+      res = await fetch(url, {
+        headers: { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9", ...headers },
+        redirect: "follow",
+      });
+    } catch (netErr) {
+      // 네트워크 레벨 에러 (ECONNRESET, socket hang up, fetch failed 등)
+      lastErr = new Error(`네트워크 에러: ${netErr.message || netErr}`);
+      if (attempt < retries) { await sleep(minDelay * (attempt + 1)); continue; }
+      throw lastErr;
+    }
+
+    if (res.ok) {
+      try { return await res.text(); }
+      catch (bodyErr) {
+        lastErr = new Error(`본문 읽기 실패: ${bodyErr.message || bodyErr}`);
+        if (attempt < retries) { await sleep(minDelay * (attempt + 1)); continue; }
+        throw lastErr;
+      }
+    }
 
     if (res.status === 429 || res.status === 403) {
       const ra = res.headers.get("retry-after");
@@ -314,10 +338,10 @@ app.post("/api/profiles", async (req, res) => {
       } catch (e) {
         profiles[u.userId] = { source: "error", posts: 0, replies: 0, error: e.message };
       }
-      await sleep(250);
+      await sleep(400);
     }
   };
-  await Promise.all(Array.from({ length: 3 }, worker));
+  await Promise.all(Array.from({ length: 2 }, () => worker().catch(e => console.error("[profile worker]", e && e.message))));
   res.json({ profiles, cached: Object.keys(profiles).length, fetched: toFetch.length });
 });
 
@@ -331,7 +355,11 @@ app.post("/api/profiles/stream", async (req, res) => {
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
 
-  const write = (obj) => res.write(JSON.stringify(obj) + "\n");
+  const write = (obj) => {
+    if (res.writableEnded || res.destroyed) return false;
+    try { return res.write(JSON.stringify(obj) + "\n"); }
+    catch (e) { console.error("[stream write]", e.message); return false; }
+  };
 
   const list = normalizeUsers(users);
   const toFetch = [];
@@ -368,14 +396,22 @@ app.post("/api/profiles/stream", async (req, res) => {
         data = await fetchUserStats(u);
         cacheSet(u.userId, data);
       } catch (e) {
-        data = { source: "error", posts: 0, replies: 0, error: e.message };
+        data = { source: "error", posts: 0, replies: 0, error: (e && e.message) || String(e) };
       }
+      if (aborted) break;
       done++;
       write({ type: "item", uid: u.userId, data, done, total, fromCache: false });
-      await sleep(250);
+      await sleep(400);
     }
   };
-  await Promise.all(Array.from({ length: 3 }, worker));
+  // 갤로그 동시 요청은 2로 제한 — 3이면 DC가 커넥션을 끊어버림
+  try {
+    await Promise.all(Array.from({ length: 2 }, () => worker().catch(e => {
+      console.error("[profile worker]", e && e.message);
+    })));
+  } catch (e) {
+    console.error("[profile stream fatal]", e && e.message);
+  }
   if (!aborted) write({ type: "done", done, total });
   res.end();
 });

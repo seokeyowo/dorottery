@@ -179,7 +179,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.3.2</div>
+  <div class="ver">v1.4.0</div>
 </header>
 
 <div class="layout">
@@ -1212,39 +1212,92 @@ function battleAnim(picked, pool, seed) {
 }
 
 
-async function captureResult(auto = false) {
+async function captureResult() {
   const stat = $("snapStatus");
   if (typeof html2canvas === "undefined") { stat.textContent = "캡처 라이브러리 로드 실패"; return; }
+  const card = document.getElementById("resultCard");
+  if (!card) return;
+
+  // 임시 캡처용 래퍼 — 원본 DOM을 오프스크린에 클론하여 장식 추가
+  const ts = new Date();
+  const pad = n => String(n).padStart(2,"0");
+  const dateStr = `${ts.getFullYear()}-${pad(ts.getMonth()+1)}-${pad(ts.getDate())} ${pad(ts.getHours())}:${pad(ts.getMinutes())}`;
+  const fname = `dororong-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.png`;
+  const gallery = (state.site && state.site.galleryName) || "";
+  const postTitle = (state.site && state.site.title) || "";
+
+  const stage = document.createElement("div");
+  stage.style.cssText = `
+    position:fixed;left:-99999px;top:0;width:720px;padding:36px 32px;
+    background:linear-gradient(180deg,#fdf7ea 0%,#f5eed7 100%);
+    font-family:'Pretendard',system-ui,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+    color:#2a2520;box-sizing:border-box;border-radius:24px;
+    box-shadow:0 20px 60px rgba(0,0,0,.12)`;
+
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;padding-bottom:14px;border-bottom:1.5px dashed rgba(42,37,32,.2)";
+  header.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="font-size:24px">🍔</div>
+      <div style="font-weight:900;font-size:18px;letter-spacing:-.3px">도로롱 로터리</div>
+    </div>
+    <div style="text-align:right;font-size:11px;color:#8a7a66;line-height:1.5">
+      ${esc(gallery || "")}<br>${dateStr}
+    </div>`;
+  stage.appendChild(header);
+
+  if (postTitle) {
+    const titleEl = document.createElement("div");
+    titleEl.style.cssText = "font-size:13px;color:#5b4e3e;margin-bottom:16px;padding:8px 12px;background:rgba(255,255,255,.5);border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+    titleEl.textContent = postTitle;
+    stage.appendChild(titleEl);
+  }
+
+  // 결과 본문 클론 (버튼/상태는 제외)
+  const bodyClone = document.getElementById("resultBody").cloneNode(true);
+  // 캡처에 포함하지 않을 요소 제거 (카드 뒷면 등)
+  bodyClone.querySelectorAll(".face-back").forEach(n => n.remove());
+  const bodyWrap = document.createElement("div");
+  bodyWrap.style.cssText = "background:#fff;border-radius:16px;padding:24px;box-shadow:0 4px 20px rgba(0,0,0,.04)";
+  bodyWrap.appendChild(bodyClone);
+  stage.appendChild(bodyWrap);
+
+  // 푸터
+  const footer = document.createElement("div");
+  footer.style.cssText = "margin-top:18px;text-align:center;font-size:10px;color:#a89a84;letter-spacing:.5px";
+  footer.textContent = "dororong-lottery · fair draw with verifiable randomness";
+  stage.appendChild(footer);
+
+  document.body.appendChild(stage);
+  stat.textContent = "캡처 중…";
+
   try {
-    stat.textContent = "캡처 중…";
-    const card = document.getElementById("resultCard");
-    // 버튼/상태는 캡처 제외
-    const ignore = Array.from(card.querySelectorAll(".row, #snapStatus"));
-    ignore.forEach(el => { el.dataset._hide = el.style.visibility || ""; el.style.visibility = "hidden"; });
-    const canvas = await html2canvas(card, { backgroundColor: "#ffffff", scale: 2 });
-    ignore.forEach(el => { el.style.visibility = el.dataset._hide; });
-    const ts = new Date();
-    const pad = n => String(n).padStart(2,"0");
-    const fname = `dororong-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.png`;
+    const dpr = Math.max(2, window.devicePixelRatio || 1);
+    const scale = Math.min(3, Math.max(2, dpr));
+    const canvas = await html2canvas(stage, {
+      backgroundColor: null,
+      scale,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      imageTimeout: 0,
+    });
     canvas.toBlob(blob => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url; a.download = fname; a.click();
       URL.revokeObjectURL(url);
-      stat.textContent = (auto ? "✓ 자동 저장됨: " : "✓ 저장됨: ") + fname;
-    });
-  } catch (e) { stat.textContent = "캡처 실패: " + e.message; }
+      stat.textContent = `✓ 저장됨: ${fname}`;
+    }, "image/png");
+  } catch (e) {
+    stat.textContent = "캡처 실패: " + e.message;
+  } finally {
+    stage.remove();
+  }
 }
 
-$("snapBtn").onclick = () => captureResult(false);
+$("snapBtn").onclick = () => captureResult();
 $("closeResult").onclick = () => $("resultModal").classList.add("hidden");
-
-// renderResult 호출 후 자동 캡처
-const _origRender = renderResult;
-renderResult = function(picked, seed) {
-  _origRender(picked, seed);
-  setTimeout(() => captureResult(true), 400);
-};
 </script>
 </body>
 </html>
