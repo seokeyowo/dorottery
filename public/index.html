@@ -179,7 +179,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.4.0</div>
+  <div class="ver">v1.5.0</div>
 </header>
 
 <div class="layout">
@@ -188,7 +188,7 @@ body{padding-bottom:80px}
     <section class="card">
       <h3 class="sec">게시글 불러오기</h3>
       <div class="row">
-        <input id="postUrl" type="text" placeholder="https://gall.dcinside.com/board/view/?id=..." />
+        <input id="postUrl" type="text" placeholder="https://gall.dcinside.com/mgallery/board/view/?id=mechanicalkeyboard&no=..." />
         <button id="loadBtn" class="primary">불러오기</button>
       </div>
       <div id="postInfo" class="post-info hidden">
@@ -203,6 +203,7 @@ body{padding-bottom:80px}
       <h3 class="sec">참여 조건</h3>
       <div class="chips">
         <label class="chip-toggle"><input type="checkbox" id="excludeFloating" /> 유동 제외</label>
+        <label class="chip-toggle"><input type="checkbox" id="excludeDccon" /> 디시콘만 있는 댓글 제외</label>
         <label class="chip-toggle"><input type="checkbox" id="dedup" checked /> 1인 1댓</label>
         <label class="chip-toggle"><input type="checkbox" id="usePostCommentSum" /> 글댓합 사용</label>
       </div>
@@ -211,9 +212,11 @@ body{padding-bottom:80px}
         <input id="includeKw" placeholder="필수 단어 (쉼표 구분)" />
         <input id="excludeKw" placeholder="금지 단어 (쉼표 구분)" />
       </div>
-      <div class="row mt">
-        <input id="minSum" type="number" min="0" value="0" placeholder="컷트라인: 글+댓글 합계" />
+      <div class="row mt" style="align-items:center;gap:10px">
+        <label for="minSum" style="font-size:13px;font-weight:700;white-space:nowrap">글댓합 컷트라인</label>
+        <input id="minSum" type="number" min="0" value="0" placeholder="예: 50 (작성자의 글+댓글 합계가 이 숫자 이상만 통과)" style="flex:1" />
       </div>
+      <div class="hint">작성자의 갤러리 활동량(글 + 댓글 총합)이 입력 숫자 미만이면 풀에서 제외됩니다. 0이면 필터 없음.</div>
 
     </section>
 
@@ -322,7 +325,7 @@ function setBusy(on, title = "작업 중", sub = "잠시만 기다려 주세요.
   $("busySub").textContent = sub;
   $("busyOverlay").classList.toggle("hidden", !on);
   document.body.classList.toggle("app-disabled", on);
-  ["postUrl","loadBtn","drawBtn","winnerCount","includeKw","excludeKw","excludeFloating","dedup","usePostCommentSum"]
+  ["postUrl","loadBtn","drawBtn","winnerCount","includeKw","excludeKw","excludeFloating","excludeDccon","dedup","usePostCommentSum"]
     .forEach(id => {
       const el = $(id);
       if (el) el.disabled = on;
@@ -492,7 +495,10 @@ async function autoLoadProfiles() {
           const eta = rate > 0 ? Math.ceil(remain / rate) : 0;
           setBusy(true, "작성자 정보 조회 중",
             `${ev.done} / ${ev.total} 명 조회 완료` + (remain ? ` · 남은 시간 약 ${eta}초` : ""));
-          if (Date.now() - lastRender > 300) { refreshPool(); lastRender = Date.now(); }
+          if (Date.now() - lastRender > 300) {
+            try { refreshPool(); } catch (err) { console.error("[refreshPool]", err); }
+            lastRender = Date.now();
+          }
         }
       }
     }
@@ -513,6 +519,12 @@ $("loadBtn").onclick = async () => {
   const url = $("postUrl").value.trim();
   $("loadErr").textContent = "";
   if (!url) { $("loadErr").textContent = "URL을 입력하세요."; return; }
+  const validUrl = /^https?:\/\/gall\.dcinside\.com\/mgallery\/board\/view\/\?(?:[^#]*&)?id=mechanicalkeyboard(?:&|$)/.test(url)
+    && /[?&]no=\d+/.test(url);
+  if (!validUrl) {
+    $("loadErr").textContent = "형식: https://gall.dcinside.com/mgallery/board/view/?id=mechanicalkeyboard&no=글번호";
+    return;
+  }
   loading = true;
   $("loadBtn").disabled = true;
   $("postUrl").disabled = true;
@@ -566,6 +578,7 @@ function getPool(wantStages) {
   const incKw = $("includeKw").value.split(",").map(s=>s.trim()).filter(Boolean);
   const excKw = $("excludeKw").value.split(",").map(s=>s.trim()).filter(Boolean);
   const exFloating = $("excludeFloating").checked;
+  const exDccon = $("excludeDccon").checked;
   const dedup = $("dedup").checked;
   const useSum = $("usePostCommentSum").checked;
   const minSum = parseInt($("minSum").value) || 0;
@@ -575,6 +588,7 @@ function getPool(wantStages) {
   // ① 유동/익명 제외
   let s1 = state.comments.filter(c => {
     if (exFloating && c.type === "floating") return false;
+    if (exDccon && c.hasDccon && !(c.text && c.text.length)) return false;
     return true;
   });
   stages.afterType = s1.length;
@@ -641,7 +655,7 @@ function refreshPool() {
   }).join("") + (pool.length > 200 ? `<div class="muted" style="padding:8px">…외 ${pool.length-200}명</div>` : "");
 }
 
-["includeKw","excludeKw","excludeFloating","dedup","usePostCommentSum","winnerCount"].forEach(id => {
+["includeKw","excludeKw","excludeFloating","excludeDccon","dedup","usePostCommentSum","winnerCount"].forEach(id => {
   const el = $(id);
   el.addEventListener(el.type === "checkbox" ? "change" : "input", refreshPool);
 });
@@ -764,13 +778,16 @@ function rouletteAnim(picked, pool, seed) {
   const colors = ["#ffb347","#ffcc66","#f7a072","#b298dc","#8ecae6","#ffafcc","#a8dadc","#ffe66d"];
   // 바늘은 위(12시, -π/2). 당첨 섹터 중앙이 바늘에 오도록 최종 각도 계산
   const targetAngle = -Math.PI/2 - (winIdx * slice + slice/2);
-  const turns = 6; // 총 회전수
-  const duration = 4200;
+  const turns = 9; // 긴장감 있게 9바퀴
+  const duration = 7500; // 7.5초
   const start = performance.now();
   const from = 0;
   const to = targetAngle + Math.PI*2*turns;
 
-  function easeOutQuart(t){ return 1 - Math.pow(1-t, 4); }
+  // easeOutQuint — 마지막에 아주 천천히 멈춤 (조마조마)
+  function easeOutQuint(t){ return 1 - Math.pow(1-t, 5); }
+  // 진동(tick-tick-tick) 효과 — 마지막 구간에서 각 섹터 지날 때 살짝 튕김
+  let lastSectorIdx = -1;
 
   function draw(angle) {
     c.clearRect(0,0,W,H);
@@ -805,10 +822,28 @@ function rouletteAnim(picked, pool, seed) {
 
   function tick(t){
     const p = Math.min(1, (t-start)/duration);
-    const ang = from + (to-from)*easeOutQuart(p);
+    let ang = from + (to-from)*easeOutQuint(p);
+    // 마지막 25% 구간: 섹터 경계 넘을 때마다 tick 사운드 느낌의 미세 진동
+    if (p > 0.75) {
+      const normalized = ((-ang - Math.PI/2) % (Math.PI*2) + Math.PI*2) % (Math.PI*2);
+      const curSector = Math.floor(normalized / slice);
+      if (curSector !== lastSectorIdx) {
+        lastSectorIdx = curSector;
+        ang += Math.sin(p * 120) * 0.006;
+      }
+    }
     draw(ang);
     if (p < 1) requestAnimationFrame(tick);
-    else setTimeout(() => renderResult(picked, seed), 700);
+    else {
+      // 결과 전 잠깐 정적 — 긴장감
+      const shell = document.getElementById("rouletteC");
+      if (shell) shell.animate([
+        { filter: "brightness(1)" },
+        { filter: "brightness(1.3)" },
+        { filter: "brightness(1)" },
+      ], { duration: 500, iterations: 2 });
+      setTimeout(() => renderResult(picked, seed), 1200);
+    }
   }
   requestAnimationFrame(tick);
 }
@@ -822,9 +857,9 @@ function slotAnim(picked, pool, seed) {
   // 긴 스트립을 만들어 위로 올림. 최종 중앙에 winnerName이 오도록 설계.
   // 각 릴마다 stops 개수 다르게 (연쇄 정지 느낌)
   const reels = [
-    { stops: 30 + Math.floor(Math.random()*5), delay: 0 },
-    { stops: 42 + Math.floor(Math.random()*5), delay: 400 },
-    { stops: 56 + Math.floor(Math.random()*5), delay: 900 },
+    { stops: 55 + Math.floor(Math.random()*8), delay: 0,    dur: 3200 },
+    { stops: 75 + Math.floor(Math.random()*8), delay: 1100, dur: 4000 },
+    { stops: 95 + Math.floor(Math.random()*8), delay: 2400, dur: 4800 },
   ];
 
   function buildStrip(stops, finalName) {
@@ -863,99 +898,188 @@ function slotAnim(picked, pool, seed) {
       </div>
     </div>`;
 
-  // 각 릴 애니메이션 — CSS transition 사용
+  // 각 릴 애니메이션 — 왼→오 연쇄 정지, 마지막 릴은 아주 천천히 멈춤
   reels.forEach((r, i) => {
     const el = document.querySelector(`.slot-strip[data-reel="${i}"]`);
     if (!el) return;
-    const total = r.stops + 2; // buildStrip 길이
-    // 최종 위치: 당첨자(index r.stops)가 중앙(CENTER) 라인에 오도록
     const finalY = -(r.stops - CENTER) * ROW;
-    const dur = 2200 + r.delay;
     setTimeout(() => {
-      el.style.transition = `transform ${dur}ms cubic-bezier(.17,.67,.2,1)`;
+      // cubic-bezier: 첫 두 릴은 표준, 마지막은 거의 멈출 듯 천천히
+      const curve = i === 2 ? "cubic-bezier(.08,.6,.15,1)" : "cubic-bezier(.17,.67,.2,1)";
+      el.style.transition = `transform ${r.dur}ms ${curve}`;
       el.style.transform = `translateY(${finalY}px)`;
-    }, 40);
+    }, 40 + r.delay);
+
+    // 각 릴 정지 시점에 "덜컥" 튕김 효과
+    setTimeout(() => {
+      if (!el.parentElement) return;
+      el.parentElement.animate([
+        { transform: "translateY(0)" },
+        { transform: "translateY(4px)" },
+        { transform: "translateY(0)" },
+      ], { duration: 180 });
+    }, 40 + r.delay + r.dur);
   });
 
-  // 당첨 라인 하이라이트 + 결과
+  // 마지막 릴 정지 후 당첨 라인 골드 펄스 + 결과
+  const totalDur = 40 + reels[2].delay + reels[2].dur;
   setTimeout(() => {
     const shell = document.querySelector("#resultBody > div:nth-child(2)");
     if (shell) {
       shell.animate([
         { boxShadow: "0 8px 30px rgba(0,0,0,.3), 0 0 0 0 rgba(255,214,107,0)" },
-        { boxShadow: "0 8px 30px rgba(0,0,0,.3), 0 0 40px 10px rgba(255,214,107,.6)" },
+        { boxShadow: "0 8px 30px rgba(0,0,0,.3), 0 0 60px 16px rgba(255,214,107,.8)" },
         { boxShadow: "0 8px 30px rgba(0,0,0,.3), 0 0 0 0 rgba(255,214,107,0)" },
-      ], { duration: 600, iterations: 2 });
+      ], { duration: 700, iterations: 3 });
     }
-    renderResult(picked, seed);
-  }, 3500);
+  }, totalDur);
+  setTimeout(() => renderResult(picked, seed), totalDur + 1600);
 }
 
 // ── 카드뽑기 (유저 클릭이 당첨 결정) ─────────────
 function cardInteractive(pool, n) {
-  // 풀 전원을 카드로 (순서는 랜덤)
   const cards = pool.slice().sort(()=>Math.random()-0.5);
-
-  // 카드 수에 따라 크기 조정 (20장 이하 크게, 50장 이하 중간, 그 이상 소형)
   const cw = cards.length <= 20 ? 80 : cards.length <= 50 ? 56 : 40;
   const ch = Math.round(cw * 1.5);
   const fs = cards.length <= 20 ? 11 : cards.length <= 50 ? 9 : 8;
+
+  // 초기: 모든 카드가 중앙에 스택되어 있다가 펼쳐지는 연출
   const cardsHtml = cards.map((c,i) => `
     <div class="card-el" data-i="${i}" style="
-      width:${cw}px;height:${ch}px;background:linear-gradient(135deg,#3a2a55,#5b6f8a);
+      width:${cw}px;height:${ch}px;
+      background:linear-gradient(135deg,#2a1e3d,#3a2a55 40%,#5b6f8a);
       border:2px solid #ffd66b;border-radius:10px;
       display:flex;align-items:center;justify-content:center;
       color:#fff;font-weight:800;cursor:pointer;position:relative;
-      transform-style:preserve-3d;transition:transform .6s;user-select:none">
+      transform-style:preserve-3d;user-select:none;
+      opacity:0;transform:translate(0,0) rotate(0) scale(.3);
+      transition:transform .55s cubic-bezier(.34,1.56,.64,1), opacity .4s, box-shadow .3s">
       <div class="face-back" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-        backface-visibility:hidden;font-size:${Math.round(cw*0.4)}px">🂠</div>
+        backface-visibility:hidden;font-size:${Math.round(cw*0.45)}px;
+        background:linear-gradient(135deg,#2a1e3d,#3a2a55 40%,#5b6f8a);
+        border-radius:8px;box-shadow:inset 0 0 12px rgba(255,214,107,.3)">🂠</div>
       <div class="face-front" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
         background:linear-gradient(135deg,#fff,#ffe1ec);color:#e91e63;border-radius:8px;
-        font-size:${fs}px;padding:4px;text-align:center;backface-visibility:hidden;transform:rotateY(180deg);word-break:break-all">
+        font-size:${fs}px;padding:4px;text-align:center;backface-visibility:hidden;transform:rotateY(180deg);word-break:break-all;
+        font-weight:900;letter-spacing:-.3px">
         선택됨
       </div>
     </div>`).join("");
+
   $("resultBody").innerHTML = `
     <div style="font-size:13px;color:#888;margin-bottom:10px">🃏 카드뽑기</div>
-    <div id="cardBox" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:12px;
-      background:#1a1410;border-radius:12px;max-height:60vh;overflow:auto">
+    <div id="cardBox" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:16px;
+      background:radial-gradient(ellipse at center,#1f1610,#0e0a08);border-radius:14px;max-height:60vh;overflow:auto;
+      perspective:1200px">
       ${cardsHtml}
     </div>
-    <div id="cardHint" style="margin-top:10px;font-size:13px;color:var(--muted)">
-      카드 ${n}장을 골라 당첨자를 뽑으세요 <span id="pickedCount">(0/${n})</span>
+    <div id="cardHint" style="margin-top:10px;font-size:13px;color:var(--muted);text-align:center">
+      카드를 펼치는 중…
     </div>`;
 
+  // 딜링 애니메이션 — 중앙에서 제 위치로 날아가며 펼쳐짐
+  const els = Array.from(document.querySelectorAll(".card-el"));
+  const box = document.getElementById("cardBox");
+  const boxRect = box.getBoundingClientRect();
+  els.forEach((el, i) => {
+    const r = el.getBoundingClientRect();
+    const dx = (boxRect.left + boxRect.width/2) - (r.left + r.width/2);
+    const dy = (boxRect.top + 20) - (r.top + r.height/2);
+    el.style.transform = `translate(${dx}px, ${dy}px) rotate(${(Math.random()-.5)*40}deg) scale(.3)`;
+    const delay = 200 + Math.min(i * 18, 1200);
+    setTimeout(() => {
+      el.style.opacity = "1";
+      el.style.transform = "translate(0,0) rotate(0) scale(1)";
+    }, delay);
+  });
+
+  setTimeout(() => {
+    $("cardHint").innerHTML = `카드 ${n}장을 골라 당첨자를 뽑으세요 <span id="pickedCount">(0/${n})</span>`;
+  }, 200 + Math.min(els.length * 18, 1200) + 400);
+
   const chosenIdx = [];
-  document.querySelectorAll(".card-el").forEach((el, i) => {
+  els.forEach((el, i) => {
     el.onclick = () => {
       if (chosenIdx.includes(i)) return;
       if (chosenIdx.length >= n) return;
       chosenIdx.push(i);
-      el.style.transform = "rotateY(180deg)";
-      el.style.boxShadow = "0 0 24px #ffd66b";
-      document.getElementById("pickedCount").textContent = `(${chosenIdx.length}/${n})`;
-      $("cardHint").textContent = `카드 ${chosenIdx.length}/${n} 선택됨`;
+      el.style.transition = "transform .65s cubic-bezier(.34,1.56,.64,1), box-shadow .3s";
+      el.style.transform = "rotateY(180deg) scale(1.08)";
+      el.style.boxShadow = "0 0 32px #ffd66b, 0 0 16px #fff";
+      el.style.zIndex = "5";
+      const pc = document.getElementById("pickedCount");
+      if (pc) pc.textContent = `(${chosenIdx.length}/${n})`;
       if (chosenIdx.length === n) {
         const picked = chosenIdx.map(idx => cards[idx]);
         recordLog({ method: "card", pool, picked,
           entropy: { source: "user-click", ts: Date.now() }, fp: "", seed: "" });
-        setTimeout(() => renderResult(picked), 250);
+        setTimeout(() => renderCardResult(picked), 900);
       }
     };
   });
 
-  // 유저가 8초 내에 아무것도 안 고르면 자동으로 n장 랜덤 뽑기
   setTimeout(() => {
     if (chosenIdx.length === 0) {
-      const els = document.querySelectorAll(".card-el");
       const idxs = [...Array(cards.length).keys()].sort(()=>Math.random()-0.5).slice(0, n);
-      idxs.forEach((idx, k) => setTimeout(() => els[idx].click(), k * 400));
+      idxs.forEach((idx, k) => setTimeout(() => els[idx].click(), k * 500));
     }
-  }, 8000);
+  }, 10000);
+}
+
+// 카드뽑기 전용 결과 — 카드가 스포트라이트 아래 펼쳐지며 flip
+function renderCardResult(picked) {
+  const cw = 140, ch = 210;
+  const cardsHtml = picked.map((w, i) => `
+    <div class="result-card" data-i="${i}" style="
+      width:${cw}px;height:${ch}px;position:relative;
+      transform-style:preserve-3d;
+      transform:translateY(40px) rotateY(0) scale(.6);
+      opacity:0;transition:transform .7s cubic-bezier(.34,1.56,.64,1), opacity .5s">
+      <div style="position:absolute;inset:0;background:linear-gradient(135deg,#2a1e3d,#3a2a55 40%,#5b6f8a);
+        border:3px solid #ffd66b;border-radius:14px;
+        display:flex;align-items:center;justify-content:center;
+        font-size:56px;color:#fff;backface-visibility:hidden;
+        box-shadow:0 10px 30px rgba(0,0,0,.35),inset 0 0 20px rgba(255,214,107,.3)">🂠</div>
+      <div style="position:absolute;inset:0;background:linear-gradient(135deg,#fff9ec,#ffe8d6);
+        border:3px solid #ffd66b;border-radius:14px;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        padding:10px;backface-visibility:hidden;transform:rotateY(180deg);
+        box-shadow:0 10px 30px rgba(0,0,0,.35)">
+        <div style="font-size:24px;margin-bottom:8px">🏆</div>
+        <div style="font-size:${Math.max(12, 18 - Math.floor((w.name||"").length/4))}px;font-weight:900;color:#a37200;text-align:center;line-height:1.2;word-break:break-all">${esc(w.name)}</div>
+        <div style="font-size:10px;color:#7a6340;margin-top:8px;text-align:center;opacity:.8;max-height:60px;overflow:hidden">${esc((w.text||"").slice(0,40))}</div>
+      </div>
+    </div>`).join("");
+
+  $("resultBody").innerHTML = `
+    <div class="result-burst"></div>
+    <div style="font-size:13px;font-weight:700;color:#888;margin-bottom:14px;text-align:center">🏆 당첨자 ${picked.length}명</div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;justify-content:center;padding:18px 6px;perspective:1200px">
+      ${cardsHtml}
+    </div>`;
+
+  const els = Array.from(document.querySelectorAll(".result-card"));
+  els.forEach((el, i) => {
+    // 1) 등장 (좌측에서 중앙으로 날아오며 스케일업)
+    setTimeout(() => {
+      el.style.opacity = "1";
+      el.style.transform = "translateY(0) rotateY(0) scale(1)";
+    }, 150 + i * 250);
+    // 2) flip (각 카드 등장 후 500ms 뒤 뒤집기)
+    setTimeout(() => {
+      el.style.transition = "transform .8s cubic-bezier(.2,.9,.3,1.2)";
+      el.style.transform = "translateY(0) rotateY(180deg) scale(1.02)";
+    }, 150 + i * 250 + 600);
+    // 3) 정렬 (다시 원래 scale로)
+    setTimeout(() => {
+      el.style.transition = "transform .35s";
+      el.style.transform = "translateY(0) rotateY(180deg) scale(1)";
+    }, 150 + i * 250 + 1400);
+  });
 }
 
 // 배틀로얄 등 다른 모드에서 cardAnim 이름으로 호출되면 기본 결과만 표시
-function cardAnim(picked, pool, seed) { renderResult(picked, seed); }
+function cardAnim(picked, pool, seed) { renderCardResult(picked); }
 
 // ── 배틀로얄 ─────────────────────────────────────
 function battleAnim(picked, pool, seed) {
@@ -1254,7 +1378,25 @@ async function captureResult() {
   }
 
   // 결과 본문 클론 (버튼/상태는 제외)
-  const bodyClone = document.getElementById("resultBody").cloneNode(true);
+  const origBody = document.getElementById("resultBody");
+  const bodyClone = origBody.cloneNode(true);
+  // 캔버스는 cloneNode 시 비어있으므로 원본에서 dataURL 추출 후 img로 치환
+  const origCanvases = origBody.querySelectorAll("canvas");
+  const cloneCanvases = bodyClone.querySelectorAll("canvas");
+  origCanvases.forEach((orig, idx) => {
+    const cc = cloneCanvases[idx];
+    if (!cc) return;
+    try {
+      const dataUrl = orig.toDataURL("image/png");
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      img.style.cssText = cc.getAttribute("style") || "";
+      img.width = orig.width;
+      img.height = orig.height;
+      img.style.maxWidth = "100%";
+      cc.replaceWith(img);
+    } catch { /* toDataURL이 실패하면(tainted) 그대로 둠 */ }
+  });
   // 캡처에 포함하지 않을 요소 제거 (카드 뒷면 등)
   bodyClone.querySelectorAll(".face-back").forEach(n => n.remove());
   const bodyWrap = document.createElement("div");

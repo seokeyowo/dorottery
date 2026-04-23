@@ -114,9 +114,17 @@ function cacheSet(uid, data) {
   profileCache.set(uid, { ts: Date.now(), data });
 }
 
+const ALLOWED_GALLERY = "mechanicalkeyboard";
+
 async function fetchDcPost(url) {
+  if (!/^https?:\/\/gall\.dcinside\.com\/mgallery\/board\/view\//.test(url)) {
+    throw new Error("허용된 URL 형식이 아닙니다. https://gall.dcinside.com/mgallery/board/view/?id=mechanicalkeyboard&no=글번호 형태로 입력하세요.");
+  }
   const info = parseDcUrl(url);
   if (!info.id || !info.no) throw new Error("DC URL에서 id/no를 찾지 못했습니다.");
+  if (info.id !== ALLOWED_GALLERY) {
+    throw new Error("이 프로그램은 기계식키보드 갤러리 전용입니다.");
+  }
 
   const mobileUrl = `https://m.dcinside.com/board/${info.id}/${info.no}`;
   const postRes = await fetch(mobileUrl, {
@@ -187,7 +195,11 @@ async function fetchAllComments({ id, no, csrf, refererUrl }) {
       }
 
       const ipText = $el.find(".ip").text().trim();
-      const text = $el.find(".txt").text().replace(/\s+/g, " ").trim();
+      const $txt = $el.find(".txt");
+      const text = $txt.text().replace(/\s+/g, " ").trim();
+      // 디시콘(이모티콘) 감지 — img, dccon 클래스, 또는 flash/video 임베드
+      const hasDccon = $txt.find("img, .dccon, .emoticon, video").length > 0
+        || /dccon|emoticon/.test(($txt.html() || "").toLowerCase());
       const date = $el.find(".date").text().trim();
       if ($el.find(".nick").hasClass("comment_boy")) return;
 
@@ -199,7 +211,7 @@ async function fetchAllComments({ id, no, csrf, refererUrl }) {
       const rawName = $nick.text().trim();
       const name = rawName || (type === "floating" ? "유동" : "미상");
       const popupHtml = $el.find(".user_data_list, .user-popup, .user_info, .pop_userinfo, .user_layer").first().html() || "";
-      out.push({ id: cid, name, userId, ip: ipText, type, text, regDate: date, popupHtml });
+      out.push({ id: cid, name, userId, ip: ipText, type, text, hasDccon, regDate: date, popupHtml });
     });
 
     const totalInput = $("#reple_totalCnt").attr("value");
@@ -346,74 +358,121 @@ app.post("/api/profiles", async (req, res) => {
 });
 
 app.post("/api/profiles/stream", async (req, res) => {
-  const { site, users } = req.body || {};
-  if (!Array.isArray(users)) return res.status(400).json({ error: "users array required" });
-  if (site !== "dcinside") return res.status(400).json({ error: "unsupported site" });
-
-  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders?.();
-
-  const write = (obj) => {
-    if (res.writableEnded || res.destroyed) return false;
-    try { return res.write(JSON.stringify(obj) + "\n"); }
-    catch (e) { console.error("[stream write]", e.message); return false; }
-  };
-
-  const list = normalizeUsers(users);
-  const toFetch = [];
-  const fastItems = [];
-  for (const u of list) {
-    const hit = cacheGet(u.userId);
-    if (hit) { fastItems.push({ uid: u.userId, data: hit, fromCache: true }); continue; }
-    const popup = parsePopupStats(u.popupHtml);
-    if (popup.posts || popup.replies) {
-      const data = { source: "popup", ...popup };
-      cacheSet(u.userId, data);
-      fastItems.push({ uid: u.userId, data, fromCache: false });
-      continue;
-    }
-    toFetch.push(u);
-  }
-  const total = list.length;
-  let done = 0;
-  write({ type: "start", total, cachedCount: fastItems.filter(x=>x.fromCache).length, fromPopup: fastItems.filter(x=>!x.fromCache).length, toFetch: toFetch.length });
-  for (const it of fastItems) {
-    done++;
-    write({ type: "item", uid: it.uid, data: it.data, done, total, fromCache: it.fromCache });
-  }
-
+  // 연결 끊김만 감지 — res 기준으로만 판단 (req의 close는 body 소비 완료 시에도 발생할 수 있어 오탐)
   let aborted = false;
-  req.on("close", () => { aborted = true; });
+  const abort = (why) => {
+    if (aborted) return;
+    // res가 아직 쓸 수 있으면 무시 (req.close는 정상 흐름일 수 있음)
+    if (!res.writableEnded && !res.destroyed && res.writable) {
+      console.log("[stream abort ignored — res still writable]", why);
+      return;
+    }
+    aborted = true;
+    console.error("[stream aborted]", why);
+  };
+  res.on("close", () => abort("res close"));
+  res.on("error", (e) => abort("res error: " + (e && e.message)));
 
-  const queue = toFetch.slice();
-  const worker = async () => {
-    while (queue.length && !aborted) {
-      const u = queue.shift();
-      let data;
+  try {
+    const { site, users } = req.body || {};
+    if (!Array.isArray(users)) return res.status(400).json({ error: "users array required" });
+    if (site !== "dcinside") return res.status(400).json({ error: "unsupported site" });
+
+    res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    try { res.flushHeaders?.(); } catch {}
+
+    const write = (obj) => {
+      if (aborted || res.writableEnded || res.destroyed) return false;
       try {
-        data = await fetchUserStats(u);
-        cacheSet(u.userId, data);
+        return res.write(JSON.stringify(obj) + "\n");
       } catch (e) {
-        data = { source: "error", posts: 0, replies: 0, error: (e && e.message) || String(e) };
+        abort("write throw: " + e.message);
+        return false;
       }
+    };
+
+    // 주기적 heartbeat (keep-alive, 프록시 타임아웃 방지)
+    const heartbeat = setInterval(() => {
+      if (aborted || res.writableEnded) { clearInterval(heartbeat); return; }
+      try { res.write(":\n"); } catch {}
+    }, 10000);
+
+    const list = normalizeUsers(users);
+    const toFetch = [];
+    const fastItems = [];
+    for (const u of list) {
+      try {
+        const hit = cacheGet(u.userId);
+        if (hit) { fastItems.push({ uid: u.userId, data: hit, fromCache: true }); continue; }
+        const popup = parsePopupStats(u.popupHtml);
+        if (popup.posts || popup.replies) {
+          const data = { source: "popup", ...popup };
+          cacheSet(u.userId, data);
+          fastItems.push({ uid: u.userId, data, fromCache: false });
+          continue;
+        }
+        toFetch.push(u);
+      } catch (e) {
+        // popup 파싱 실패는 무시하고 gallog로 폴백
+        toFetch.push(u);
+      }
+    }
+    const total = list.length;
+    let done = 0;
+    write({ type: "start", total, cachedCount: fastItems.filter(x=>x.fromCache).length, fromPopup: fastItems.filter(x=>!x.fromCache).length, toFetch: toFetch.length });
+    for (const it of fastItems) {
       if (aborted) break;
       done++;
-      write({ type: "item", uid: u.userId, data, done, total, fromCache: false });
-      await sleep(400);
+      write({ type: "item", uid: it.uid, data: it.data, done, total, fromCache: it.fromCache });
     }
-  };
-  // 갤로그 동시 요청은 2로 제한 — 3이면 DC가 커넥션을 끊어버림
-  try {
-    await Promise.all(Array.from({ length: 2 }, () => worker().catch(e => {
-      console.error("[profile worker]", e && e.message);
-    })));
+
+    // 병렬 처리 — 동시 2명. 워커당 사이 350ms 간격 → 실질 req rate ≈ 5.7/sec (밴 없는 구간)
+    const queue = toFetch.slice();
+    const worker = async (workerId) => {
+      // 워커 시작 시점을 엇갈려서 정확히 동시 요청 방지
+      await sleep(workerId * 180);
+      while (!aborted) {
+        const u = queue.shift();
+        if (!u) break;
+        let data;
+        try {
+          data = await fetchUserStats(u);
+          try { cacheSet(u.userId, data); } catch {}
+        } catch (e) {
+          data = { source: "error", posts: 0, replies: 0, error: (e && e.message) || String(e) };
+        }
+        if (aborted) break;
+        done++;
+        write({ type: "item", uid: u.userId, data, done, total, fromCache: false });
+        // 워커 내부 간격 — abort 반응형 sleep
+        const s = Date.now();
+        while (Date.now() - s < 350 && !aborted) await sleep(80);
+      }
+    };
+    try {
+      await Promise.all([0, 1].map(i => worker(i).catch(e => console.error("[profile worker]", e && e.message))));
+    } catch (e) {
+      console.error("[profile pool]", e && e.message);
+    }
+
+    clearInterval(heartbeat);
+    if (!aborted) write({ type: "done", done, total });
   } catch (e) {
     console.error("[profile stream fatal]", e && e.message);
+  } finally {
+    try { if (!res.writableEnded) res.end(); } catch {}
   }
-  if (!aborted) write({ type: "done", done, total });
-  res.end();
+  return;
+});
+
+// 최후의 안전망 — 어떤 라우트가 예외를 던져도 프로세스가 죽지 않도록
+app.use((err, req, res, next) => {
+  console.error("[express error]", err && err.message);
+  if (!res.headersSent) res.status(500).json({ error: err.message || "server error" });
+  else try { res.end(); } catch {}
 });
 
 function startServer(port) {
