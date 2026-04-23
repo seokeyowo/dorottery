@@ -22,7 +22,7 @@ html,body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
 .err{color:var(--err);font-size:13px;margin-top:6px}
 .mt{margin-top:10px}
 
-.topbar{display:flex;align-items:center;gap:14px;padding:14px 24px;
+.topbar{display:flex;align-items:center;gap:14px;padding:14px 24px;flex-wrap:wrap;
   background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
 .brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:17px}
 .brand img{width:38px;height:38px;border-radius:8px;object-fit:cover;border:1px solid var(--line)}
@@ -43,8 +43,9 @@ html,body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
 .hash{display:block;font-family:ui-monospace,monospace;font-size:13px;
   background:#f0ede5;padding:8px 10px;border-radius:6px;color:var(--ink);
   margin-top:6px;word-break:break-all;border:1px solid var(--line)}
-.tabs{display:flex;gap:6px;align-items:center;border-bottom:1px solid var(--line);
+.tabs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line);
   margin-bottom:10px;padding-bottom:6px}
+.tabs #footDesc{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tab{background:transparent;border:none;padding:8px 12px;border-radius:6px 6px 0 0;
   color:var(--muted);font-weight:700;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-7px}
 .tab:hover{color:var(--ink)}
@@ -63,19 +64,22 @@ html,body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
 .log-verify.bad{color:var(--err)}
 .draw-foot{margin-top:14px;padding:14px;background:#faf8f4;border:1px solid var(--line);
   border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.draw-summary{font-size:14px;color:var(--muted);font-weight:600}
+.draw-summary{font-size:14px;color:var(--muted);font-weight:600;line-height:1.8}
 .big-num{font-size:22px;font-weight:800;color:var(--ink);font-family:ui-monospace,monospace}
 .big-num.accent{color:var(--accent)}
-.method-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-.mcard{display:flex;align-items:center;gap:6px;padding:10px 8px;
+.method-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+@media(max-width:640px){.method-cards{grid-template-columns:repeat(3,1fr)}}
+.mcard{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  padding:10px 4px;min-height:68px;
   background:#fff;border:1px solid var(--line);border-radius:8px;cursor:pointer;
-  font-size:13px;font-weight:600;color:var(--muted);text-align:left}
-.mcard span{font-size:20px;line-height:1}
-.mcard:hover{border-color:var(--accent);color:var(--ink)}
+  font-size:12px;font-weight:600;color:var(--muted);text-align:center;line-height:1.2;
+  transition:transform .1s, border-color .1s, background .1s}
+.mcard span{font-size:22px;line-height:1}
+.mcard:hover{border-color:var(--accent);color:var(--ink);transform:translateY(-1px)}
 .mcard.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 .row{display:flex;gap:8px;flex-wrap:wrap}
-.row>input{flex:1;min-width:160px}
+.row>input{flex:1 1 160px;min-width:0}
 input[type=text],input[type=number],input:not([type]){width:100%;padding:9px 12px;
   background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:7px;
   font-size:13px;font-family:inherit}
@@ -98,7 +102,7 @@ button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 
-.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px 8px}
 .chip{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;
   background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700}
 .chip-toggle{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;
@@ -111,7 +115,7 @@ button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
 
 .post-info{margin-top:10px;padding:10px;background:#faf8f4;border-radius:8px;
   display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line)}
-.post-title{flex:1;min-width:180px;font-weight:600;font-size:13px}
+.post-title{flex:1 1 180px;min-width:0;font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .subcard{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:8px;background:#fbf8f3}
 .sub-head{display:flex;justify-content:space-between;align-items:center}
@@ -131,7 +135,7 @@ button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
 .pool::-webkit-scrollbar-thumb{background:#d8d2c8;border-radius:4px}
 .pool-item{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
 .pool-item:last-child{border:none}
-.pool-name{color:var(--accent);font-weight:700;flex-shrink:0;min-width:80px}
+.pool-name{color:var(--accent);font-weight:700;flex-shrink:0;min-width:80px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pool-tag{font-size:10px;color:var(--muted);background:#eee;padding:1px 7px;border-radius:4px;font-weight:600}
 .pool-tag.fixed{background:#fff3c4;color:#a37200}
 .pool-tag.floating{background:#f0e4d4;color:var(--warn)}
@@ -140,7 +144,7 @@ button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
 
 .modal{position:fixed;inset:0;background:rgba(38,34,29,.5);display:flex;
   align-items:center;justify-content:center;z-index:100;padding:20px}
-.modal-card{background:#fff;border-radius:12px;padding:24px;max-width:480px;width:100%;
+.modal-card{background:#fff;border-radius:12px;padding:24px;max-width:560px;width:100%;max-height:calc(100vh - 40px);overflow:auto;
   text-align:center;animation:pop .25s ease;border:1px solid var(--line);transform-origin:center}
 @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
 .winner-big{font-size:26px;font-weight:800;color:var(--accent);margin:14px 0;padding:18px;
@@ -179,7 +183,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.5.0</div>
+  <div class="ver">v1.6.0</div>
 </header>
 
 <div class="layout">
@@ -235,6 +239,9 @@ body{padding-bottom:80px}
         <button class="mcard" data-method="slot"><span>🎰</span>슬롯</button>
         <button class="mcard" data-method="card"><span>🃏</span>카드뽑기</button>
         <button class="mcard" data-method="battle"><span>⚔️</span>배틀로얄</button>
+        <button class="mcard" data-method="keycap"><span>⌨️</span>키캡뽑기</button>
+        <button class="mcard" data-method="horse"><span>🐎</span>경마</button>
+        <button class="mcard" data-method="archery" title="⚠ 공정성 검증 없음 — 사용자의 조준 타이밍이 화살 착점을 결정하고, 착점에 가장 가까운 참가자가 당첨됩니다. 블록 해시 기반 공정성 검증을 사용하지 않는 유일한 방식입니다."><span>🏹</span>활쏘기</button>
       </div>
       <div class="grid2 mt">
         <div><label>당첨 인원</label><input id="winnerCount" type="number" min="1" value="1" /></div>
@@ -411,6 +418,10 @@ function renderLogs() {
         <b>참여자 지문</b> <code style="font-size:10px">${esc(l.poolFp||"")}</code></div>`;
     } else if (ent.source === "time") {
       entropyHtml = `<div class="log-meta"><b>⚠ 로컬 랜덤</b> (블록 조회 실패 폴백)</div>`;
+    } else if (ent.source === "user-aim") {
+      entropyHtml = `<div class="log-meta"><b>🏹 사용자 조준</b> 공정성 검증 없음 · 조준 y=${ent.aimY} · 착점=(${(ent.landing||[]).join(",")})</div>`;
+    } else if (ent.source === "user-click") {
+      entropyHtml = `<div class="log-meta"><b>🃏 사용자 선택</b> 공정성 검증 없음</div>`;
     }
     return `<div class="log-entry">
       <div class="log-head">
@@ -421,7 +432,7 @@ function renderLogs() {
       <div class="log-meta"><span style="color:#aaa">후보 ${l.poolSize}명 중 ${l.winners.length}명</span></div>
       ${entropyHtml}
       <div class="row" style="margin-top:6px">
-        <button class="ghost" data-vid="${l.id}" style="padding:4px 10px;font-size:11px">재검증</button>
+        ${l.seed ? `<button class="ghost" data-vid="${l.id}" style="padding:4px 10px;font-size:11px">재검증</button>` : `<span class="muted" style="font-size:10px">이 방식은 재검증 불가</span>`}
         <span class="log-verify" id="vstat-${l.id}"></span>
       </div>
     </div>`;
@@ -683,6 +694,12 @@ $("drawBtn").onclick = async () => {
     cardInteractive(pool, n);
     return;
   }
+  // 활쏘기: 공정성 검증 없이 조준 정확도로 당첨자 결정 (진짜 인터랙티브 모드)
+  if (state.method === "archery") {
+    $("resultModal").classList.remove("hidden");
+    archeryInteractive(pool, n);
+    return;
+  }
 
   // 공정성 엔트로피: 비트코인 최신 블록 해시 + 현재 시각 조합
   setBusy(true, "블록 조회 중", "비트코인 최신 블록 해시를 확인하는 중입니다. 잠시만 기다려 주세요.");
@@ -728,6 +745,9 @@ function showResult(picked, pool, seed) {
   else if (m === "slot") slotAnim(picked, pool, seed);
   else if (m === "card") cardAnim(picked, pool, seed);
   else if (m === "battle") battleAnim(picked, pool, seed);
+  else if (m === "keycap") keycapAnim(picked, pool, seed);
+  else if (m === "horse") horseAnim(picked, pool, seed);
+  else if (m === "archery") archeryAnim(picked, pool, seed);
 }
 
 function seedFoot() { return ""; } // 엔트로피 정보는 로그 탭에서 확인
@@ -1436,6 +1456,343 @@ async function captureResult() {
   } finally {
     stage.remove();
   }
+}
+
+// ── 키캡 뽑기 ───────────────────────────────────
+function keycapAnim(picked, pool, seed) {
+  const winner = picked[0];
+  const MAX = Math.min(pool.length, 30);
+  let keys = pool.slice();
+  if (keys.length > MAX) {
+    const others = keys.filter(p => (p.userId||p.name) !== (winner.userId||winner.name));
+    others.sort(()=>Math.random()-0.5);
+    keys = [winner, ...others.slice(0, MAX-1)].sort(()=>Math.random()-0.5);
+  }
+  const winIdx = keys.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
+
+  const capsHtml = keys.map((p,i)=>`
+    <div class="keycap" data-i="${i}" style="
+      width:72px;height:72px;border-radius:8px;
+      background:linear-gradient(180deg,#fafaf5 0%,#e8e3d3 75%,#d0c9b4 100%);
+      border:1px solid #b8b09a;box-shadow:0 4px 0 #9a927c, 0 6px 10px rgba(0,0,0,.25);
+      display:flex;align-items:center;justify-content:center;
+      font-size:11px;font-weight:800;color:#3a3225;padding:4px;
+      text-align:center;line-height:1.1;word-break:break-all;overflow:hidden;
+      transition:transform .25s, box-shadow .25s, background .25s">
+      ${esc((p.name||"").slice(0,8))}
+    </div>`).join("");
+
+  $("resultBody").innerHTML = `
+    <div style="font-size:13px;color:#888;margin-bottom:10px">⌨️ 키캡 뽑기</div>
+    <div style="padding:18px;background:linear-gradient(180deg,#2a2520,#15110d);border-radius:14px;
+         display:grid;grid-template-columns:repeat(6,1fr);gap:8px;justify-items:center;max-height:60vh;overflow:auto">
+      ${capsHtml}
+    </div>
+    <div id="keycapHint" style="margin-top:10px;font-size:13px;color:var(--muted)">키캡 위를 훑는 중…</div>`;
+
+  const caps = Array.from(document.querySelectorAll(".keycap"));
+  const N = caps.length;
+  // 조명처럼 훑기: 처음엔 빠르게, 점점 느려지며 당첨 키캡에 정지
+  let step = 0;
+  const totalSteps = N * 3 + winIdx + 1; // 최소 3바퀴 + 당첨 위치
+  function tick() {
+    caps.forEach(c => {
+      c.style.transform = ""; c.style.boxShadow = "0 4px 0 #9a927c, 0 6px 10px rgba(0,0,0,.25)";
+      c.style.background = "linear-gradient(180deg,#fafaf5 0%,#e8e3d3 75%,#d0c9b4 100%)";
+    });
+    const i = step % N;
+    const cur = caps[i];
+    cur.style.transform = "translateY(-3px) scale(1.05)";
+    cur.style.boxShadow = "0 7px 0 #9a927c, 0 10px 18px rgba(255,214,107,.55)";
+    cur.style.background = "linear-gradient(180deg,#fff6d6,#ffd66b)";
+    step++;
+    if (step >= totalSteps) {
+      // 최종 강조
+      cur.style.transform = "translateY(-8px) scale(1.18)";
+      cur.style.boxShadow = "0 12px 0 #b89300, 0 0 28px #ffd66b, 0 0 14px #fff";
+      $("keycapHint").innerHTML = `🏆 <b>${esc(winner.name)}</b> 당첨!`;
+      setTimeout(() => renderResult(picked), 900);
+      return;
+    }
+    // 가속→감속 (ease-out)
+    const t = step / totalSteps;
+    const delay = 40 + Math.pow(t, 3) * 260;
+    setTimeout(tick, delay);
+  }
+  setTimeout(tick, 300);
+}
+
+// ── 경마 ─────────────────────────────────────
+function horseAnim(picked, pool, seed) {
+  const winner = picked[0];
+  // 전원 참가 (제한 없음)
+  let racers = pool.slice().sort(()=>Math.random()-0.5);
+  const winIdx = racers.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
+  const N = racers.length;
+  // 주자 수에 따라 레인 높이 자동 조정 (적으면 넉넉하게, 많으면 촘촘하게, 최소 18px)
+  const laneH = Math.max(18, Math.min(56, Math.floor(480 / N)));
+  const W = 460, H = laneH*N + 30;
+
+  $("resultBody").innerHTML = `
+    <div style="font-size:13px;color:#888;margin-bottom:10px">🐎 경마 — 결승선까지</div>
+    <div id="horseWrap" style="position:relative;background:linear-gradient(180deg,#a8d5a0,#7cb373);border-radius:12px;padding:10px;max-height:60vh;overflow:auto">
+      <canvas id="horseC" width="${W}" height="${H}" style="max-width:100%;display:block"></canvas>
+    </div>
+    <div id="horseHint" style="margin-top:10px;font-size:13px;color:var(--muted);text-align:center">출발!</div>`;
+
+  const cv = document.getElementById("horseC"), ctx = cv.getContext("2d");
+  const startX = 70, finishX = W - 50;
+  const horseFont = Math.max(18, Math.floor(laneH * 0.55));
+  const nameFont = Math.max(9, Math.floor(laneH * 0.22));
+  const emojis = ["🐎","🐴","🦄","🐎","🐴","🦓","🐎","🐴"];
+
+  // 각 주자에게 progress [0,1] — 당첨자가 마지막에 1.0 도달하도록 시간 예산 분배
+  const racerState = racers.map((r, i) => ({
+    r, i, p: 0,
+    baseSpeed: 0.0018 + Math.random() * 0.0007, // px per ms ratio
+    jitter: 0,
+  }));
+  // 목표: 당첨자가 3.2~3.8초 사이에 도착, 나머지는 그 이후
+  const duration = 3400;
+  const start = performance.now();
+
+  function frame(now) {
+    const dt = now - start;
+    ctx.clearRect(0,0,W,H);
+    // 트랙 라인
+    for (let k=0;k<N;k++) {
+      const y = 20 + k * laneH;
+      ctx.fillStyle = "rgba(255,255,255,.25)";
+      ctx.fillRect(0, y+laneH-4, W, 1);
+    }
+    // 결승선
+    ctx.fillStyle = "#fff";
+    for (let k=0;k<H;k+=10) { ctx.fillRect(finishX, k, 4, 5); ctx.fillRect(finishX+4, k+5, 4, 5); }
+
+    let winnerDone = false;
+    racerState.forEach(rs => {
+      // 당첨자: dt/duration을 그대로. 다른애들: 자기 baseSpeed
+      let targetP;
+      if (rs.i === winIdx) {
+        targetP = Math.min(1, (dt / duration));
+      } else {
+        // 다른 애들은 당첨자보다 살짝 느리게 수렴
+        const own = Math.min(0.97, dt * rs.baseSpeed);
+        targetP = own;
+      }
+      rs.p = targetP;
+      const x = startX + (finishX - startX - 20) * rs.p;
+      const y = 20 + rs.i * laneH;
+      // 말 이모지 (위아래 살짝 바운스)
+      const bob = Math.sin(dt * 0.02 + rs.i) * Math.min(3, laneH*0.08);
+      ctx.font = horseFont + "px serif";
+      ctx.textBaseline = "middle";
+      ctx.fillText(emojis[rs.i % emojis.length], x, y + laneH/2 + bob);
+      // 이름 레이블
+      ctx.font = `bold ${nameFont}px system-ui`;
+      ctx.fillStyle = rs.i === winIdx ? "#5b3a00" : "#1d3a1a";
+      ctx.textAlign = "left";
+      const name = (rs.r.name||"").slice(0,10);
+      ctx.fillText(`${rs.i+1}. ${name}`, 6, y + nameFont + 1);
+      if (rs.i === winIdx && rs.p >= 1) winnerDone = true;
+    });
+
+    // 당첨자 레인이 화면 가운데 오도록 자동 스크롤
+    const wrap = document.getElementById("horseWrap");
+    if (wrap) {
+      const winY = 20 + winIdx * laneH + laneH/2;
+      const desired = Math.max(0, winY - wrap.clientHeight/2);
+      wrap.scrollTop += (desired - wrap.scrollTop) * 0.08;
+    }
+
+    if (!winnerDone && dt < duration + 50) {
+      requestAnimationFrame(frame);
+    } else {
+      $("horseHint").innerHTML = `🏆 <b>${esc(winner.name)}</b> 우승!`;
+      setTimeout(() => renderResult(picked), 1100);
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+// ── 활쏘기 (인터랙티브) ────────────────────────────
+// 활쏘기 — 기존 공정성 추첨 버전 (다른 경로에서 호출되면 렌더만)
+function archeryAnim(picked, pool, seed) { renderResult(picked); }
+
+// 활쏘기 — 진짜 인터랙티브 (공정성 검증 없음, 조준 실력이 당첨자 결정)
+function archeryInteractive(pool, n) {
+  const W = 460, H = 320;
+  const targetX = W - 90, targetY = H/2, Rmax = 80;
+  const archerX = 60, archerY = H/2;
+
+  $("resultBody").innerHTML = `
+    <div style="font-size:13px;color:#888;margin-bottom:10px">🏹 활쏘기 — 조준 실력이 곧 운명 (공정성 검증 OFF)</div>
+    <div style="position:relative;background:radial-gradient(ellipse at right,#e8f0ff,#b8c8e0);
+         border-radius:12px;overflow:hidden">
+      <canvas id="archC" width="${W}" height="${H}" style="max-width:100%;display:block"></canvas>
+    </div>
+    <div id="archHint" style="margin-top:10px;font-size:13px;color:var(--muted);text-align:center">
+      조준선이 흔들리는 동안 <b>쏘기</b>를 눌러 화살의 착점을 결정하세요. 착점에서 가장 가까운 참가자가 당첨됩니다.
+    </div>
+    <div style="margin-top:10px;display:flex;justify-content:center;gap:8px">
+      <button id="shootBtn" class="primary lg">🏹 쏘기 (Space)</button>
+    </div>`;
+
+  const cv = document.getElementById("archC"), ctx = cv.getContext("2d");
+
+  // 참가자를 과녁 주변에 무작위 배치 (polar 좌표, Rmax 내부)
+  const spots = pool.map((p, i) => {
+    // 균등 분포 — r = Rmax*sqrt(rand), θ = rand*2π
+    const r = Rmax * Math.sqrt(Math.random()) * 0.95;
+    const a = Math.random() * Math.PI * 2;
+    return {
+      c: p,
+      x: targetX + Math.cos(a) * r,
+      y: targetY + Math.sin(a) * r,
+    };
+  });
+
+  let aimY = H/2;
+  let t0 = performance.now();
+  let shot = false;
+
+  function drawScene() {
+    ctx.clearRect(0,0,W,H);
+    // 바닥
+    ctx.fillStyle = "#9ab878";
+    ctx.fillRect(0, H-40, W, 40);
+    // 과녁 (동심원)
+    const rings = [
+      { r: Rmax, c: "#fff" },
+      { r: Rmax*0.8, c: "#222" },
+      { r: Rmax*0.6, c: "#3a8dff" },
+      { r: Rmax*0.42, c: "#e14a4a" },
+      { r: Rmax*0.24, c: "#ffd66b" },
+      { r: Rmax*0.1, c: "#fff" },
+    ];
+    rings.forEach(r => {
+      ctx.beginPath(); ctx.arc(targetX, targetY, r.r, 0, Math.PI*2);
+      ctx.fillStyle = r.c; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.2)"; ctx.stroke();
+    });
+    // 참가자 점 (과녁 내부에 흩뿌려짐)
+    for (const s of spots) {
+      ctx.beginPath(); ctx.arc(s.x, s.y, 2.2, 0, Math.PI*2);
+      ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fill();
+    }
+
+    // 스탠드
+    ctx.fillStyle = "#6b4a2a";
+    ctx.fillRect(targetX-3, targetY+Rmax, 6, 40);
+
+    // 궁수
+    ctx.font = "40px serif"; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    ctx.fillText("🏹", archerX, archerY);
+  }
+
+  function drawAim(y) {
+    // 점선 조준선
+    ctx.save();
+    ctx.setLineDash([6,6]);
+    ctx.strokeStyle = "rgba(255,60,60,.65)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(archerX+20, archerY);
+    ctx.lineTo(targetX-Rmax, y);
+    ctx.stroke();
+    ctx.restore();
+    // 조준점
+    ctx.beginPath(); ctx.arc(targetX-Rmax+2, y, 4, 0, Math.PI*2);
+    ctx.fillStyle = "#ff3c3c"; ctx.fill();
+  }
+
+  function loop(now) {
+    if (shot) return;
+    const dt = now - t0;
+    // 오실레이션: 과녁 상하로 왕복, 속도 변화
+    aimY = targetY + Math.sin(dt * 0.0045) * (Rmax + 10);
+    drawScene();
+    drawAim(aimY);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  function shoot() {
+    if (shot) return; shot = true;
+    const userAimY = aimY;
+
+    // 착점 계산: 사용자 조준선이 과녁 평면(targetX)에 도달하는 점 +
+    // 미세한 바람/손떨림 (실력 피드백용)
+    const windY = (Math.random() - 0.5) * 8;
+    const landingX = targetX + (Math.random() - 0.5) * 6;
+    const landingY = userAimY + windY;
+
+    // 착점과 각 참가자 거리 → 가장 가까운 사람이 당첨자
+    let best = 0, bestD = Infinity;
+    spots.forEach((s, i) => {
+      const d = Math.hypot(s.x - landingX, s.y - landingY);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    const winner = spots[best].c;
+    const picked = [winner];
+
+    // 착점이 과녁 중앙에서 얼마나 떨어졌는지 → 문구
+    const centerDist = Math.hypot(landingX - targetX, landingY - targetY);
+    let accMsg;
+    if (centerDist < Rmax*0.1) accMsg = "💯 퍼펙트 샷!";
+    else if (centerDist < Rmax*0.3) accMsg = "🎯 명중!";
+    else if (centerDist < Rmax*0.6) accMsg = "👍 나쁘지 않아요";
+    else if (centerDist < Rmax) accMsg = "😅 과녁은 맞춤";
+    else accMsg = "💨 빗나감...";
+
+    const startT = performance.now();
+    const flyDur = 700;
+    const sx = archerX+20, sy = archerY;
+    const ex = landingX, ey = landingY;
+
+    function fly(now) {
+      const t = Math.min(1, (now - startT) / flyDur);
+      const bx = sx + (ex - sx) * t;
+      const by = sy + (ey - sy) * t;
+      drawScene();
+      ctx.strokeStyle = "#5a3a1a"; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      ctx.font = "20px serif"; ctx.fillStyle = "#000";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("➤", bx, by);
+      if (t < 1) requestAnimationFrame(fly);
+      else {
+        drawScene();
+        // 박힌 화살 + 착점 강조
+        ctx.beginPath(); ctx.arc(ex, ey, 4, 0, Math.PI*2);
+        ctx.fillStyle = "#000"; ctx.fill();
+        ctx.font = "22px serif"; ctx.fillText("➤", ex, ey);
+        // 당첨자 스포트라이트
+        const w = spots[best];
+        ctx.beginPath(); ctx.arc(w.x, w.y, 12, 0, Math.PI*2);
+        ctx.strokeStyle = "#ffd66b"; ctx.lineWidth = 3; ctx.stroke();
+        // 플래시
+        ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(0,0,W,H);
+        $("archHint").innerHTML = `${accMsg} — 🏆 <b>${esc(winner.name)}</b> 당첨!`;
+
+        // 로그에 기록 (공정성 검증 없음 표시)
+        recordLog({
+          method: "archery", pool, picked,
+          entropy: { source: "user-aim", aimY: Math.round(userAimY), landing: [Math.round(ex), Math.round(ey)], ts: Date.now() },
+          fp: "", seed: "",
+        });
+
+        setTimeout(() => renderResult(picked), 1200);
+      }
+    }
+    requestAnimationFrame(fly);
+  }
+  document.getElementById("shootBtn").onclick = shoot;
+  const onKey = (e) => { if (e.code === "Space") { e.preventDefault(); shoot(); document.removeEventListener("keydown", onKey); } };
+  document.addEventListener("keydown", onKey);
 }
 
 $("snapBtn").onclick = () => captureResult();
