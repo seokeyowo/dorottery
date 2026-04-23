@@ -179,7 +179,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.2.1</div>
+  <div class="ver">v1.3.0</div>
 </header>
 
 <div class="layout">
@@ -740,27 +740,158 @@ function renderResult(picked, seed) {
 }
 
 function rouletteAnim(picked, pool, seed) {
-  $("resultBody").innerHTML = `<div class="winner-big">추첨 중…<small>당첨자는 결과창에서만 공개됩니다.</small></div>`;
-  setTimeout(() => renderResult(picked, seed), 2600);
+  const W = 420, H = 420, cx = W/2, cy = H/2, R = 180;
+  const winner = picked[0];
+  // 최대 24개까지 표시 (많으면 당첨자 + 무작위 샘플)
+  const MAX = Math.min(pool.length, 24);
+  let wheel = pool.slice();
+  if (wheel.length > MAX) {
+    const others = wheel.filter(p => (p.userId||p.name) !== (winner.userId||winner.name));
+    others.sort(()=>Math.random()-0.5);
+    wheel = [winner, ...others.slice(0, MAX-1)].sort(()=>Math.random()-0.5);
+  }
+  const winIdx = wheel.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
+  const N = wheel.length;
+  const slice = (Math.PI*2) / N;
+
+  $("resultBody").innerHTML = `
+    <div style="font-size:13px;color:#888;margin-bottom:10px">🎡 룰렛</div>
+    <div style="position:relative;display:flex;justify-content:center;align-items:center">
+      <canvas id="rouletteC" width="${W}" height="${H}" style="max-width:100%"></canvas>
+      <div style="position:absolute;top:4px;left:50%;transform:translateX(-50%);
+        width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;
+        border-top:22px solid #ff5252;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4));z-index:3"></div>
+    </div>`;
+
+  const c = document.getElementById("rouletteC").getContext("2d");
+  const colors = ["#ffb347","#ffcc66","#f7a072","#b298dc","#8ecae6","#ffafcc","#a8dadc","#ffe66d"];
+  // 바늘은 위(12시, -π/2). 당첨 섹터 중앙이 바늘에 오도록 최종 각도 계산
+  const targetAngle = -Math.PI/2 - (winIdx * slice + slice/2);
+  const turns = 6; // 총 회전수
+  const duration = 4200;
+  const start = performance.now();
+  const from = 0;
+  const to = targetAngle + Math.PI*2*turns;
+
+  function easeOutQuart(t){ return 1 - Math.pow(1-t, 4); }
+
+  function draw(angle) {
+    c.clearRect(0,0,W,H);
+    // 그림자
+    c.save(); c.translate(cx, cy+8);
+    c.fillStyle = "rgba(0,0,0,.25)"; c.beginPath(); c.ellipse(0,0,R*0.95,R*0.3,0,0,Math.PI*2); c.fill();
+    c.restore();
+
+    c.save();
+    c.translate(cx, cy);
+    c.rotate(angle);
+    for (let i=0;i<N;i++) {
+      const a0 = i*slice, a1 = (i+1)*slice;
+      c.fillStyle = (i === winIdx) ? "#ffd66b" : colors[i%colors.length];
+      c.beginPath(); c.moveTo(0,0); c.arc(0,0,R,a0,a1); c.closePath(); c.fill();
+      c.strokeStyle = "#fff"; c.lineWidth = 2; c.stroke();
+      // 이름 텍스트
+      c.save();
+      c.rotate(a0 + slice/2);
+      c.fillStyle = "#2a2520"; c.font = `bold ${N<=12?14:11}px system-ui`;
+      c.textAlign = "right"; c.textBaseline = "middle";
+      const name = (wheel[i].name || "").slice(0, N<=12?10:8);
+      c.fillText(name, R-10, 0);
+      c.restore();
+    }
+    c.restore();
+    // 허브
+    c.fillStyle = "#3a2a55"; c.beginPath(); c.arc(cx,cy,22,0,Math.PI*2); c.fill();
+    c.strokeStyle = "#ffd66b"; c.lineWidth=3; c.stroke();
+    c.fillStyle = "#ffd66b"; c.beginPath(); c.arc(cx,cy,6,0,Math.PI*2); c.fill();
+  }
+
+  function tick(t){
+    const p = Math.min(1, (t-start)/duration);
+    const ang = from + (to-from)*easeOutQuart(p);
+    draw(ang);
+    if (p < 1) requestAnimationFrame(tick);
+    else setTimeout(() => renderResult(picked, seed), 700);
+  }
+  requestAnimationFrame(tick);
 }
 
 function slotAnim(picked, pool, seed) {
-  const ROW = 56;
-  const VISIBLE = 3;
-  const names = Array.from({ length: 27 }, (_, i) => `추첨 ${i + 1}`);
+  const winner = picked[0];
+  const ROW = 64, VISIBLE = 3, CENTER = 1; // 중앙 줄이 당첨 라인
+  const poolNames = pool.map(p => p.name || "?");
+  const winnerName = winner.name || "?";
+
+  // 긴 스트립을 만들어 위로 올림. 최종 중앙에 winnerName이 오도록 설계.
+  // 각 릴마다 stops 개수 다르게 (연쇄 정지 느낌)
+  const reels = [
+    { stops: 30 + Math.floor(Math.random()*5), delay: 0 },
+    { stops: 42 + Math.floor(Math.random()*5), delay: 400 },
+    { stops: 56 + Math.floor(Math.random()*5), delay: 900 },
+  ];
+
+  function buildStrip(stops, finalName) {
+    const arr = [];
+    for (let i=0;i<stops;i++) arr.push(poolNames[Math.floor(Math.random()*poolNames.length)]);
+    arr.push(finalName); // 마지막이 당첨자
+    // 보여줄 위 여유
+    arr.push(poolNames[Math.floor(Math.random()*poolNames.length)] || "?");
+    return arr;
+  }
+
+  const reelsHtml = reels.map((r, i) => {
+    const strip = buildStrip(r.stops, winnerName);
+    return `
+      <div class="slot-reel" style="flex:1;position:relative;background:#1a1410;border-radius:10px;overflow:hidden;
+        height:${ROW*VISIBLE}px;margin:0 3px;box-shadow:inset 0 0 24px rgba(0,0,0,.6)">
+        <div class="slot-strip" data-reel="${i}" style="display:flex;flex-direction:column;will-change:transform;
+          transform:translateY(0)">
+          ${strip.map(n => `<div style="height:${ROW}px;display:flex;align-items:center;justify-content:center;
+            font-weight:800;font-size:18px;color:#fff;border-bottom:1px solid #2a2520;padding:0 6px;
+            text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc((n||"").slice(0,10))}</div>`).join("")}
+        </div>
+      </div>`;
+  }).join("");
 
   $("resultBody").innerHTML = `
-    <div style="font-size:13px;color:#888;margin-bottom:10px">🎰 슬롯</div>
-    <div style="position:relative;background:#1a1410;border-radius:12px;padding:6px;height:${ROW*VISIBLE+12}px;overflow:hidden">
-      <div style="position:absolute;left:6px;right:6px;top:${6+ROW}px;height:${ROW}px;
-        border-top:2px solid #ffd66b;border-bottom:2px solid #ffd66b;
-        background:rgba(255,214,107,.08);pointer-events:none;z-index:2"></div>
-      <div id="slotStrip" style="display:flex;flex-direction:column;will-change:transform">
-        ${names.map(n => `<div style="height:${ROW}px;display:flex;align-items:center;justify-content:center;
-          font-weight:800;font-size:20px;color:#fff;border-bottom:1px solid #2a2520">${esc(n).slice(0,12)}</div>`).join("")}
+    <div style="font-size:13px;color:#888;margin-bottom:10px">🎰 슬롯머신</div>
+    <div style="position:relative;padding:10px;background:linear-gradient(180deg,#2a1810,#1a0f08);
+      border-radius:14px;border:3px solid #c9a55e;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+      <div style="display:flex;justify-content:center;position:relative;height:${ROW*VISIBLE}px">
+        ${reelsHtml}
+        <div style="position:absolute;left:6px;right:6px;top:${ROW*CENTER}px;height:${ROW}px;
+          border-top:2px solid #ffd66b;border-bottom:2px solid #ffd66b;
+          background:linear-gradient(180deg,rgba(255,214,107,.12),rgba(255,214,107,.04));pointer-events:none;z-index:2;
+          box-shadow:0 0 20px rgba(255,214,107,.3) inset"></div>
       </div>
     </div>`;
-  setTimeout(() => renderResult(picked, seed), 2600);
+
+  // 각 릴 애니메이션 — CSS transition 사용
+  reels.forEach((r, i) => {
+    const el = document.querySelector(`.slot-strip[data-reel="${i}"]`);
+    if (!el) return;
+    const total = r.stops + 2; // buildStrip 길이
+    // 최종 위치: 당첨자(index r.stops)가 중앙(CENTER) 라인에 오도록
+    const finalY = -(r.stops - CENTER) * ROW;
+    const dur = 2200 + r.delay;
+    setTimeout(() => {
+      el.style.transition = `transform ${dur}ms cubic-bezier(.17,.67,.2,1)`;
+      el.style.transform = `translateY(${finalY}px)`;
+    }, 40);
+  });
+
+  // 당첨 라인 하이라이트 + 결과
+  setTimeout(() => {
+    const shell = document.querySelector("#resultBody > div:nth-child(2)");
+    if (shell) {
+      shell.animate([
+        { boxShadow: "0 8px 30px rgba(0,0,0,.3), 0 0 0 0 rgba(255,214,107,0)" },
+        { boxShadow: "0 8px 30px rgba(0,0,0,.3), 0 0 40px 10px rgba(255,214,107,.6)" },
+        { boxShadow: "0 8px 30px rgba(0,0,0,.3), 0 0 0 0 rgba(255,214,107,0)" },
+      ], { duration: 600, iterations: 2 });
+    }
+    renderResult(picked, seed);
+  }, 3500);
 }
 
 // ── 카드뽑기 (유저 클릭이 당첨 결정) ─────────────
