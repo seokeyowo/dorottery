@@ -133,7 +133,7 @@ button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
 .pool-item:last-child{border:none}
 .pool-name{color:var(--accent);font-weight:700;flex-shrink:0;min-width:80px}
 .pool-tag{font-size:10px;color:var(--muted);background:#eee;padding:1px 7px;border-radius:4px;font-weight:600}
-.pool-tag.fixed{background:#dde6f0;color:var(--accent)}
+.pool-tag.fixed{background:#fff3c4;color:#a37200}
 .pool-tag.floating{background:#f0e4d4;color:var(--warn)}
 .pool-text{flex:1;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pool-stats{font-size:11px;color:var(--muted);margin-left:auto;flex-shrink:0;font-family:ui-monospace,monospace}
@@ -179,7 +179,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.3.0</div>
+  <div class="ver">v1.3.1</div>
 </header>
 
 <div class="layout">
@@ -203,7 +203,6 @@ body{padding-bottom:80px}
       <h3 class="sec">참여 조건</h3>
       <div class="chips">
         <label class="chip-toggle"><input type="checkbox" id="excludeFloating" /> 유동 제외</label>
-        <label class="chip-toggle"><input type="checkbox" id="excludeAnon" /> 익명 제외</label>
         <label class="chip-toggle"><input type="checkbox" id="dedup" checked /> 1인 1댓</label>
         <label class="chip-toggle"><input type="checkbox" id="usePostCommentSum" /> 글댓합 사용</label>
       </div>
@@ -323,7 +322,7 @@ function setBusy(on, title = "작업 중", sub = "잠시만 기다려 주세요.
   $("busySub").textContent = sub;
   $("busyOverlay").classList.toggle("hidden", !on);
   document.body.classList.toggle("app-disabled", on);
-  ["postUrl","loadBtn","drawBtn","winnerCount","includeKw","excludeKw","excludeFloating","excludeAnon","dedup","usePostCommentSum"]
+  ["postUrl","loadBtn","drawBtn","winnerCount","includeKw","excludeKw","excludeFloating","dedup","usePostCommentSum"]
     .forEach(id => {
       const el = $(id);
       if (el) el.disabled = on;
@@ -567,7 +566,6 @@ function getPool(wantStages) {
   const incKw = $("includeKw").value.split(",").map(s=>s.trim()).filter(Boolean);
   const excKw = $("excludeKw").value.split(",").map(s=>s.trim()).filter(Boolean);
   const exFloating = $("excludeFloating").checked;
-  const exAnon = $("excludeAnon").checked;
   const dedup = $("dedup").checked;
   const useSum = $("usePostCommentSum").checked;
   const minSum = parseInt($("minSum").value) || 0;
@@ -577,7 +575,6 @@ function getPool(wantStages) {
   // ① 유동/익명 제외
   let s1 = state.comments.filter(c => {
     if (exFloating && c.type === "floating") return false;
-    if (exAnon && c.type === "anonymous") return false;
     return true;
   });
   stages.afterType = s1.length;
@@ -636,7 +633,7 @@ function refreshPool() {
   $("pool").innerHTML = pool.slice(0, 200).map(c => {
     const p = state.profiles[c.userId];
     const stat = p ? `글 ${p.posts} / 댓 ${p.replies} / 합 ${(Number(p.posts)||0)+(Number(p.replies)||0)}` : "정보 조회 중";
-    const tag = c.type === 'fixed' ? '고닉' : c.type === 'floating' ? '유동' : '익명';
+    const tag = c.type === 'fixed' ? '고닉' : '유동';
     return `<div class="pool-item"><span class="pool-name">${esc(c.name)}</span>
       <span class="pool-tag ${c.type}">${tag}</span>
       <span class="pool-text">${esc(c.text)}</span>
@@ -644,7 +641,7 @@ function refreshPool() {
   }).join("") + (pool.length > 200 ? `<div class="muted" style="padding:8px">…외 ${pool.length-200}명</div>` : "");
 }
 
-["includeKw","excludeKw","excludeFloating","excludeAnon","dedup","usePostCommentSum","winnerCount"].forEach(id => {
+["includeKw","excludeKw","excludeFloating","dedup","usePostCommentSum","winnerCount"].forEach(id => {
   const el = $(id);
   el.addEventListener(el.type === "checkbox" ? "change" : "input", refreshPool);
 });
