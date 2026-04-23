@@ -252,7 +252,7 @@ async function fetchUserStats({ userId, popupHtml } = {}) {
 }
 
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "8mb" }));
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -274,35 +274,104 @@ app.get("/api/fetch", async (req, res) => {
   }
 });
 
+function normalizeUsers(users) {
+  return users.map(u => typeof u === "string" ? { userId: u } : { userId: u.userId, popupHtml: u.popupHtml });
+}
+
 app.post("/api/profiles", async (req, res) => {
   const { site, users } = req.body || {};
   if (!Array.isArray(users)) return res.status(400).json({ error: "users array required" });
   if (site !== "dcinside") return res.status(400).json({ error: "unsupported site" });
 
+  const list = normalizeUsers(users);
   const profiles = {};
   const toFetch = [];
-  for (const uid of users) {
-    const hit = cacheGet(uid);
-    if (hit) profiles[uid] = hit;
-    else toFetch.push(uid);
+  for (const u of list) {
+    const hit = cacheGet(u.userId);
+    if (hit) { profiles[u.userId] = hit; continue; }
+    const popup = parsePopupStats(u.popupHtml);
+    if (popup.posts || popup.replies) {
+      const data = { source: "popup", ...popup };
+      profiles[u.userId] = data; cacheSet(u.userId, data); continue;
+    }
+    toFetch.push(u);
   }
 
   const queue = toFetch.slice();
   const worker = async () => {
     while (queue.length) {
-      const uid = queue.shift();
+      const u = queue.shift();
       try {
-        const data = await fetchUserStats({ userId: uid });
-        profiles[uid] = data;
-        cacheSet(uid, data);
+        const data = await fetchUserStats(u);
+        profiles[u.userId] = data;
+        cacheSet(u.userId, data);
       } catch (e) {
-        profiles[uid] = { source: "error", posts: 0, replies: 0, error: e.message };
+        profiles[u.userId] = { source: "error", posts: 0, replies: 0, error: e.message };
       }
-      await sleep(500);
+      await sleep(250);
     }
   };
-  await Promise.all(Array.from({ length: 1 }, worker));
+  await Promise.all(Array.from({ length: 3 }, worker));
   res.json({ profiles, cached: Object.keys(profiles).length, fetched: toFetch.length });
+});
+
+app.post("/api/profiles/stream", async (req, res) => {
+  const { site, users } = req.body || {};
+  if (!Array.isArray(users)) return res.status(400).json({ error: "users array required" });
+  if (site !== "dcinside") return res.status(400).json({ error: "unsupported site" });
+
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders?.();
+
+  const write = (obj) => res.write(JSON.stringify(obj) + "\n");
+
+  const list = normalizeUsers(users);
+  const toFetch = [];
+  const fastItems = [];
+  for (const u of list) {
+    const hit = cacheGet(u.userId);
+    if (hit) { fastItems.push({ uid: u.userId, data: hit, fromCache: true }); continue; }
+    const popup = parsePopupStats(u.popupHtml);
+    if (popup.posts || popup.replies) {
+      const data = { source: "popup", ...popup };
+      cacheSet(u.userId, data);
+      fastItems.push({ uid: u.userId, data, fromCache: false });
+      continue;
+    }
+    toFetch.push(u);
+  }
+  const total = list.length;
+  let done = 0;
+  write({ type: "start", total, cachedCount: fastItems.filter(x=>x.fromCache).length, fromPopup: fastItems.filter(x=>!x.fromCache).length, toFetch: toFetch.length });
+  for (const it of fastItems) {
+    done++;
+    write({ type: "item", uid: it.uid, data: it.data, done, total, fromCache: it.fromCache });
+  }
+
+  let aborted = false;
+  req.on("close", () => { aborted = true; });
+
+  const queue = toFetch.slice();
+  const worker = async () => {
+    while (queue.length && !aborted) {
+      const u = queue.shift();
+      let data;
+      try {
+        data = await fetchUserStats(u);
+        cacheSet(u.userId, data);
+      } catch (e) {
+        data = { source: "error", posts: 0, replies: 0, error: e.message };
+      }
+      done++;
+      write({ type: "item", uid: u.userId, data, done, total, fromCache: false });
+      await sleep(250);
+    }
+  };
+  await Promise.all(Array.from({ length: 3 }, worker));
+  if (!aborted) write({ type: "done", done, total });
+  res.end();
 });
 
 function startServer(port) {

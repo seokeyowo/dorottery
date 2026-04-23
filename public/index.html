@@ -179,7 +179,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.2</div>
+  <div class="ver">v1.2.1</div>
 </header>
 
 <div class="layout">
@@ -447,21 +447,56 @@ let profileLoading = false;
 
 async function autoLoadProfiles() {
   if (profileLoading) return;
-  const users = [...new Set(state.comments.filter(c => c.userId).map(c => c.userId))];
+  const byUid = new Map();
+  for (const c of state.comments) {
+    if (!c.userId) continue;
+    const prev = byUid.get(c.userId);
+    if (!prev || (!prev.popupHtml && c.popupHtml)) byUid.set(c.userId, { userId: c.userId, popupHtml: c.popupHtml || "" });
+  }
+  const users = [...byUid.values()];
   if (!users.length) return;
   profileLoading = true;
   $("loadBtn").disabled = true;
   $("loadBtn").innerHTML = `<span class="spinner"></span> 작성자 조회 중`;
-  setBusy(true, "작성자 정보 조회 중", `댓글 작성자 ${users.length}명의 글/댓글 수를 불러오는 중입니다.`);
+  setBusy(true, "작성자 정보 조회 중", `0 / ${users.length} 명 조회 중...`);
   try {
-    const res = await fetch(API + "/api/profiles", {
+    const res = await fetch(API + "/api/profiles/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ site: state.site, users })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "프로필 조회 실패");
-    state.profiles = data.profiles || {};
+    if (!res.ok) {
+      let msg = "프로필 조회 실패";
+      try { const j = await res.json(); msg = j.error || msg; } catch {}
+      throw new Error(msg);
+    }
+    if (!res.body) throw new Error("stream unsupported");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let lastRender = 0;
+    const startedAt = Date.now();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        const s = line.trim(); if (!s) continue;
+        let ev; try { ev = JSON.parse(s); } catch { continue; }
+        if (ev.type === "item") {
+          state.profiles[ev.uid] = ev.data;
+          const elapsed = (Date.now() - startedAt) / 1000;
+          const rate = ev.done / Math.max(elapsed, 0.1);
+          const remain = Math.max(0, ev.total - ev.done);
+          const eta = rate > 0 ? Math.ceil(remain / rate) : 0;
+          setBusy(true, "작성자 정보 조회 중",
+            `${ev.done} / ${ev.total} 명 조회 완료` + (remain ? ` · 남은 시간 약 ${eta}초` : ""));
+          if (Date.now() - lastRender > 300) { refreshPool(); lastRender = Date.now(); }
+        }
+      }
+    }
     refreshPool();
     $("loadErr").textContent = "";
   } catch (e) {
