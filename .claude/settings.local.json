@@ -13,7 +13,13 @@
       "PowerShell(git add package.json server.js public/index.html)",
       "PowerShell(git commit -m \"v1.3.1: ����/���� 2�� �з� \\(������ ���� ����\\)\" -m \"- �� �� ������\\(�Ŵ���/�θŴ���/����/�Ǻ�\\)�� ������ ����, ������ ����\" -m \"- �͸�/�ݰ��� ���� ���� ���� \\(HTML�� ������ �����Ͽ� �ŷ� �Ұ�\\)\" -m \"- ���� �ܼ�ȭ: '���� ����' �ϳ��� ����\" -m \"Co-Authored-By: Claude Opus 4.7 \\(1M context\\) <noreply@anthropic.com>\")",
       "PowerShell(gh auth status 2>&1)",
-      "PowerShell(gh api user --jq .login)"
+      "PowerShell(gh api user --jq .login)",
+      "PowerShell(Get-Command node,npm,npx -ErrorAction SilentlyContinue | Select-Object Name,Source; Get-ChildItem \"$env:APPDATA\\\\npm\\\\npm.cmd\",\"$env:ProgramFiles\\\\nodejs\\\\npm.cmd\" -ErrorAction SilentlyContinue)",
+      "PowerShell($env:Path = \"C:\\\\Program Files\\\\nodejs;\" + $env:Path; cd \"C:\\\\Users\\\\User\\\\.claude\\\\도로롱로터리\"; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1 | Select-Object -Last 25)",
+      "PowerShell($env:Path = \"C:\\\\Program Files\\\\nodejs;\" + $env:Path; cd \"C:\\\\Users\\\\User\\\\.claude\\\\도로롱로터리\"; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1 | Select-Object -Last 15)",
+      "PowerShell($env:Path = \"C:\\\\Program Files\\\\nodejs;\" + $env:Path; cd \"C:\\\\Users\\\\User\\\\.claude\\\\도로롱로터리\"; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1 | Select-Object -Last 10; Get-ChildItem dist)",
+      "PowerShell($env:Path = \"C:\\\\Program Files\\\\nodejs;\" + $env:Path; cd \"C:\\\\Users\\\\User\\\\.claude\\\\도로롱로터리\"; Get-Process dorottery -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 1; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1 | Select-Object -Last 5)",
+      "PowerShell($env:Path = \"C:\\\\Program Files\\\\nodejs;\" + $env:Path; cd \"C:\\\\Users\\\\User\\\\.claude\\\\도로롱로터리\"; Get-Process dorottery -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 1; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1 | Select-Object -Last 5; Get-ChildItem dist\\\\dorottery.exe | Format-Table Name,Length)"
     ]
   }
 }

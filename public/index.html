@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>도로롱 기계식 키보드 갤러리 추첨기</title>
+<title>dorottery</title>
 <link rel="icon" type="image/png" href="burger.png" />
 <link rel="shortcut icon" type="image/png" href="burger.png" />
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -181,7 +181,7 @@ body{padding-bottom:80px}
 <header class="topbar">
   <div class="brand">
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
-    <span>도로롱 기계식 키보드 갤러리 추첨기</span>
+    <span>dorottery</span>
   </div>
   <div class="ver">v1.10.0</div>
 </header>
@@ -746,8 +746,11 @@ function recordLog({ method, pool, picked, entropy, fp, seed }) {
   renderLogs();
 }
 
+function disableSnap(){ const b=$("snapBtn"); if(b){ b.disabled=true; b.style.opacity=".4"; b.style.cursor="not-allowed"; b.title="게임이 끝난 후 저장할 수 있습니다"; } }
+function enableSnap(){ const b=$("snapBtn"); if(b){ b.disabled=false; b.style.opacity="1"; b.style.cursor=""; b.title=""; } }
 function showResult(picked, pool, seed) {
   $("resultModal").classList.remove("hidden");
+  disableSnap();
   const m = state.method;
   if (m === "basic") renderResult(picked, seed);
   else if (m === "roulette") rouletteAnim(picked, pool, seed);
@@ -773,6 +776,7 @@ const METHOD_THEMES = {
 };
 
 function renderResult(picked, seed) {
+  enableSnap();
   const theme = METHOD_THEMES[state.method] || METHOD_THEMES.default;
   let body;
   const header = `<div class="themed-result-banner" style="background:${theme.bg};border-radius:14px;padding:18px 20px;margin-bottom:14px;text-align:center;position:relative;overflow:hidden">
@@ -801,7 +805,7 @@ function renderResult(picked, seed) {
 }
 
 function rouletteAnim(picked, pool, seed) {
-  const W = 420, H = 420, cx = W/2, cy = H/2, R = 180;
+  const W = 620, H = 620, cx = W/2, cy = H/2, R = 270;
   const winner = picked[0];
   // 전원 표시 (제한 없음) — 인원 많으면 라벨 자동 축소
   let wheel = pool.slice().sort(()=>Math.random()-0.5);
@@ -901,11 +905,12 @@ function slotAnim(picked, pool, seed) {
   const winnerName = winner.name || "?";
 
   // 긴 스트립을 만들어 위로 올림. 최종 중앙에 winnerName이 오도록 설계.
-  // 각 릴마다 stops 개수 다르게 (연쇄 정지 느낌)
+  // 3개 릴이 동시에 멈춤. 대신 도는 속도(이동거리)가 릴마다 다름.
+  const DUR = 4200;
   const reels = [
-    { stops: 55 + Math.floor(Math.random()*8), delay: 0,    dur: 3200 },
-    { stops: 75 + Math.floor(Math.random()*8), delay: 1100, dur: 4000 },
-    { stops: 95 + Math.floor(Math.random()*8), delay: 2400, dur: 4800 },
+    { stops: 55 + Math.floor(Math.random()*6), delay: 0, dur: DUR }, // 느린 릴
+    { stops: 80 + Math.floor(Math.random()*6), delay: 0, dur: DUR }, // 중간 속도
+    { stops: 110 + Math.floor(Math.random()*6), delay: 0, dur: DUR }, // 빠른 릴
   ];
 
   function buildStrip(stops, finalName) {
@@ -950,8 +955,8 @@ function slotAnim(picked, pool, seed) {
     if (!el) return;
     const finalY = -(r.stops - CENTER) * ROW;
     setTimeout(() => {
-      // cubic-bezier: 첫 두 릴은 표준, 마지막은 거의 멈출 듯 천천히
-      const curve = i === 2 ? "cubic-bezier(.08,.6,.15,1)" : "cubic-bezier(.17,.67,.2,1)";
+      // 점점 느려지다가 동시에 멈추는 이징
+      const curve = "cubic-bezier(.15,.55,.25,1)";
       el.style.transition = `transform ${r.dur}ms ${curve}`;
       el.style.transform = `translateY(${finalY}px)`;
     }, 40 + r.delay);
@@ -968,7 +973,7 @@ function slotAnim(picked, pool, seed) {
   });
 
   // 마지막 릴 정지 후 당첨 라인 골드 펄스 + 결과
-  const totalDur = 40 + reels[2].delay + reels[2].dur;
+  const totalDur = 40 + DUR;
   setTimeout(() => {
     const shell = document.querySelector("#resultBody > div:nth-child(2)");
     if (shell) {
@@ -985,9 +990,14 @@ function slotAnim(picked, pool, seed) {
 // ── 카드뽑기 (유저 클릭이 당첨 결정) ─────────────
 function cardInteractive(pool, n) {
   const cards = pool.slice().sort(()=>Math.random()-0.5);
-  const cw = cards.length <= 20 ? 80 : cards.length <= 50 ? 56 : 40;
+  const N = cards.length;
+  const cw = N <= 20 ? 80 : N <= 50 ? 56 : 40;
   const ch = Math.round(cw * 1.5);
-  const fs = cards.length <= 20 ? 11 : cards.length <= 50 ? 9 : 8;
+  const fs = N <= 20 ? 11 : N <= 50 ? 9 : 8;
+  // 정확한 직사각형 배치: 가로가 살짝 더 긴 격자
+  const cols = Math.max(1, Math.round(Math.sqrt(N * 1.6)));
+  const rows = Math.ceil(N / cols);
+  const padCells = cols * rows - N;
 
   // 초기: 모든 카드가 중앙에 스택되어 있다가 펼쳐지는 연출
   const cardsHtml = cards.map((c,i) => `
@@ -1012,12 +1022,13 @@ function cardInteractive(pool, n) {
       </div>
     </div>`).join("");
 
+  const padHtml = Array.from({length: padCells}, () => `<div style="width:${cw}px;height:${ch}px;visibility:hidden"></div>`).join("");
   $("resultBody").innerHTML = `
     <div style="font-size:13px;color:#888;margin-bottom:10px">🃏 카드뽑기</div>
-    <div id="cardBox" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:16px;
+    <div id="cardBox" style="display:grid;grid-template-columns:repeat(${cols}, ${cw}px);gap:6px;justify-content:center;padding:16px;
       background:radial-gradient(ellipse at center,#1f1610,#0e0a08);border-radius:14px;max-height:60vh;overflow:auto;
       perspective:1200px">
-      ${cardsHtml}
+      ${cardsHtml}${padHtml}
     </div>
     <div id="cardHint" style="margin-top:10px;font-size:13px;color:var(--muted);text-align:center">
       카드를 펼치는 중…
@@ -1074,6 +1085,7 @@ function cardInteractive(pool, n) {
 
 // 카드뽑기 전용 결과 — 카드가 스포트라이트 아래 펼쳐지며 flip
 function renderCardResult(picked) {
+  enableSnap();
   const cw = 140, ch = 210;
   const cardsHtml = picked.map((w, i) => `
     <div class="result-card" data-i="${i}" style="
@@ -1144,7 +1156,7 @@ function battleAnim(picked, pool, seed) {
   const charImgs = window.__battleCharImgs;
   const pickImg = (idx) => charImgs[idx % charImgs.length];
 
-  const W = 620, H = 520;
+  const W = 1080, H = 620;
   const target = picked[0];
   // 풀 전원 참가 (제한 없음)
   const participants = pool.slice().sort(()=>Math.random()-0.5);
@@ -1534,7 +1546,7 @@ async function captureResult() {
   const ts = new Date();
   const pad = n => String(n).padStart(2,"0");
   const dateStr = `${ts.getFullYear()}-${pad(ts.getMonth()+1)}-${pad(ts.getDate())} ${pad(ts.getHours())}:${pad(ts.getMinutes())}`;
-  const fname = `dororong-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.png`;
+  const fname = `dorottery-${ts.getFullYear()}${pad(ts.getMonth()+1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.png`;
   const gallery = (state.site && state.site.galleryName) || "";
   const postTitle = (state.site && state.site.title) || "";
 
@@ -1551,7 +1563,7 @@ async function captureResult() {
   header.innerHTML = `
     <div style="display:flex;align-items:center;gap:10px">
       <div style="font-size:24px">🍔</div>
-      <div style="font-weight:900;font-size:18px;letter-spacing:-.3px">도로롱 로터리</div>
+      <div style="font-weight:900;font-size:18px;letter-spacing:-.3px">dorottery</div>
     </div>
     <div style="text-align:right;font-size:11px;color:#8a7a66;line-height:1.5">
       ${esc(gallery || "")}<br>${dateStr}
@@ -1595,7 +1607,7 @@ async function captureResult() {
   // 푸터
   const footer = document.createElement("div");
   footer.style.cssText = "margin-top:18px;text-align:center;font-size:10px;color:#a89a84;letter-spacing:.5px";
-  footer.textContent = "dororong-lottery · fair draw with verifiable randomness";
+  footer.textContent = "dorottery · fair draw with verifiable randomness";
   stage.appendChild(footer);
 
   document.body.appendChild(stage);
@@ -1849,7 +1861,7 @@ function horseAnim(picked, pool, seed) {
   const winIdx = racers.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
   const N = racers.length;
 
-  const W = 780, H = 560;
+  const W = 1080, H = 620;
   // ── F1 스타일 코너 + 직선 조합 트랙 (둥근 직사각형 + 꺾임 포인트) ──
   // 간단화: 둥근 직사각형 트랙을 기본으로 하고, 상단 중간에 시케인(S자)을 추가
   const PAD = 70;
@@ -2259,6 +2271,7 @@ function horseAnim(picked, pool, seed) {
       // 레이싱 화면 자체에 포디움 오버레이
       if (!window.__racingPodiumShown) {
         window.__racingPodiumShown = true;
+        enableSnap();
         setTimeout(() => {
           const top3 = sorted.slice(0, 3);
           ctx.save();
@@ -2340,7 +2353,7 @@ function archeryAnim(picked, pool, seed) { renderResult(picked); }
 // 활쏘기 — 진짜 인터랙티브 (공정성 검증 없음, 조준 실력이 당첨자 결정)
 function archeryInteractive(pool, n) {
   // 리뉴얼: 각도 + 파워 게이지 2단 조작 + 포물선 궤적 + 바람
-  const W = 900, H = 460;
+  const W = 1080, H = 560;
   const targetX = W - 130, targetY = H - 120, Rmax = 100;
   const archerX = 90, archerY = H - 80;
 
