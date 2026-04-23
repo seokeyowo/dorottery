@@ -144,7 +144,7 @@ button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
 
 .modal{position:fixed;inset:0;background:rgba(38,34,29,.5);display:flex;
   align-items:center;justify-content:center;z-index:100;padding:20px}
-.modal-card{background:#fff;border-radius:12px;padding:24px;max-width:560px;width:100%;max-height:calc(100vh - 40px);overflow:auto;
+.modal-card{background:#fff;border-radius:12px;padding:24px;max-width:900px;width:calc(100% - 24px);max-height:calc(100vh - 24px);overflow:auto;
   text-align:center;animation:pop .25s ease;border:1px solid var(--line);transform-origin:center}
 @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
 .winner-big{font-size:26px;font-weight:800;color:var(--accent);margin:14px 0;padding:18px;
@@ -183,7 +183,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.8.0</div>
+  <div class="ver">v1.9.0</div>
 </header>
 
 <div class="layout">
@@ -240,7 +240,7 @@ body{padding-bottom:80px}
         <button class="mcard" data-method="card"><span>🃏</span>카드뽑기</button>
         <button class="mcard" data-method="battle"><span>⚔️</span>배틀로얄</button>
         <button class="mcard" data-method="keycap"><span>⌨️</span>키캡뽑기</button>
-        <button class="mcard" data-method="horse"><span>🐎</span>경마</button>
+        <button class="mcard" data-method="horse"><span>🏎️</span>레이싱</button>
         <button class="mcard" data-method="archery" title="⚠ 공정성 검증 없음 — 사용자의 조준 타이밍이 화살 착점을 결정하고, 착점에 가장 가까운 참가자가 당첨됩니다. 블록 해시 기반 공정성 검증을 사용하지 않는 유일한 방식입니다."><span>🏹</span>활쏘기</button>
       </div>
       <div class="grid2 mt">
@@ -761,17 +761,38 @@ function showResult(picked, pool, seed) {
 
 function seedFoot() { return ""; } // 엔트로피 정보는 로그 탭에서 확인
 
+// 방식별 결과창 테마
+const METHOD_THEMES = {
+  roulette:{emoji:"🎡",name:"룰렛",label:"🎯 당첨! 바늘이 가리킨 주인공",bg:"linear-gradient(135deg,#fff3c4,#ffd66b)"},
+  card:    {emoji:"🃏",name:"카드 뒤집기",label:"🃏 JOKER를 뽑은 주인공",bg:"linear-gradient(135deg,#e8e2ff,#b298dc)"},
+  keycap:  {emoji:"⌨️",name:"키캡 뽑기",label:"⌨️ 하이라이트된 키캡의 주인",bg:"linear-gradient(135deg,#d1f1ff,#8ecae6)"},
+  horse:   {emoji:"🏁",name:"레이싱",label:"🏆 체커기 아래 1위 피니시",bg:"linear-gradient(135deg,#ffd8d8,#ff8a8a)"},
+  archery: {emoji:"🏹",name:"활쏘기",label:"🎯 화살이 꽂힌 바로 그 자리",bg:"linear-gradient(135deg,#ffe8cc,#f7a072)"},
+  battle:  {emoji:"⚔️",name:"배틀로얄",label:"👑 최후의 생존자",bg:"linear-gradient(135deg,#ffd66b,#f7a072)"},
+  default: {emoji:"🏆",name:"",label:"🏆 당첨자",bg:"linear-gradient(135deg,#e8f0ff,#b8c8e0)"},
+};
+
 function renderResult(picked, seed) {
+  const theme = METHOD_THEMES[state.method] || METHOD_THEMES.default;
   let body;
+  const header = `<div class="themed-result-banner" style="background:${theme.bg};border-radius:14px;padding:18px 20px;margin-bottom:14px;text-align:center;position:relative;overflow:hidden">
+    <div style="font-size:64px;line-height:1;margin-bottom:4px;text-shadow:0 2px 8px rgba(0,0,0,.15)">${theme.emoji}</div>
+    <div style="font-weight:800;font-size:16px;color:#2a2a2a">${theme.name} 결과</div>
+    <div style="font-size:12px;color:rgba(0,0,0,.55);margin-top:2px">${theme.label}</div>
+  </div>`;
   if (picked.length === 1) {
     const w = picked[0];
-    body = `<div class="result-burst"></div><div style="font-size:13px;color:#888">🏆 당첨자</div>
+    body = `<div class="result-burst"></div>${header}
       <div class="winner-big" style="transform:scale(1.03);box-shadow:0 14px 40px rgba(91,111,138,.16)">${esc(w.name)}<small>${esc(w.text)}</small></div>`;
   } else {
-    body = `<div class="result-burst"></div><div style="font-size:14px;font-weight:700;margin-bottom:10px">🏆 당첨자 ${picked.length}명</div>
-      <div class="winner-list">${picked.map((w,i) => `<div class="pool-item">
-        <span class="pool-name">${i+1}. ${esc(w.name)}</span>
-        <span>${esc(w.text).slice(0,60)}</span></div>`).join("")}</div>`;
+    body = `<div class="result-burst"></div>${header}
+      <div style="font-size:14px;font-weight:700;margin-bottom:10px">당첨자 ${picked.length}명</div>
+      <div class="winner-list">${picked.map((w,i) => {
+        const medal = i===0?"🥇":(i===1?"🥈":(i===2?"🥉":`${i+1}.`));
+        return `<div class="pool-item">
+        <span class="pool-name">${medal} ${esc(w.name)}</span>
+        <span>${esc(w.text).slice(0,60)}</span></div>`;
+      }).join("")}</div>`;
   }
   $("resultBody").innerHTML = body + seedFoot(seed);
   const card = $("resultCard");
@@ -1820,7 +1841,7 @@ function keycapAnim(picked, pool, seed) {
   setTimeout(tick, 300);
 }
 
-// ── 경마 ─────────────────────────────────────
+// ── 레이싱 ─────────────────────────────────────
 function horseAnim(picked, pool, seed) {
   const winner = picked[0];
   let racers = pool.slice().sort(()=>Math.random()-0.5);
@@ -1910,9 +1931,12 @@ function horseAnim(picked, pool, seed) {
   const RACE_DIST = PERIM * TOTAL_LAPS;
 
   // 각 레이서 상태 (보정 없는 물리 베이스)
-  const state = racers.map((r, i) => ({
-    r, i,
-    s: -(i % 4) * 14 - Math.floor(i/4) * 6, // 그리드 시작 오프셋 (뒤쪽부터 약간 밀림)
+  // 스타트/피니시 라인을 s=0으로 맞추고, 그리드는 뒤쪽(음수) 방향으로 정렬
+  const state = racers.map((r, i) => {
+    const s0 = -(i % 4) * 14 - Math.floor(i/4) * 6; // 그리드 시작 오프셋
+    return { r, i,
+    s: s0,
+    s0,   // 시작 위치 (완주 거리 기준점)
     v: 0,            // 현재 속도 (픽셀/ms)
     targetV: 0,      // 목표 속도
     baseV: 0,        // 레이서별 기본 속도 (당첨자가 살짝 빠름)
@@ -1924,7 +1948,8 @@ function horseAnim(picked, pool, seed) {
     rank: i+1,
     prevRank: i+1,
     lastOvertakeAt: 0,
-  }));
+  };
+  });
 
   // 목표 평균 속도 = RACE_DIST / duration
   const meanV = RACE_DIST / duration;
@@ -2005,8 +2030,8 @@ function horseAnim(picked, pool, seed) {
     ctx.closePath(); ctx.stroke();
     ctx.restore();
 
-    // 스타트/피니시 라인 (남쪽 직선 중앙)
-    const sf = pathPos(seg[0].len * 0.5, 0); // bottom segment 중앙
+    // 스타트/피니시 라인 (s=0 지점 = 남쪽 직선 우측 끝 = 출발점)
+    const sf = pathPos(0, 0);
     ctx.save();
     // 체커 패턴 (폭 = trackW)
     for (let i=-trackW/2; i<trackW/2; i+=8){
@@ -2074,7 +2099,7 @@ function horseAnim(picked, pool, seed) {
   }
 
   function updateRanks(){
-    const sorted = state.slice().sort((a,b) => b.s - a.s);
+    const sorted = state.slice().sort((a,b) => (b.s - b.s0) - (a.s - a.s0));
     sorted.forEach((rs, idx) => {
       rs.prevRank = rs.rank;
       rs.rank = idx + 1;
@@ -2140,8 +2165,8 @@ function horseAnim(picked, pool, seed) {
       // 레인 보간 (추월시 살짝 바깥으로)
       rs.lateralTarget = ((rs.i % 5) - 2) * (trackW/6) + (rs.spin>0? (Math.random()-0.5)*10:0);
       rs.lateral += (rs.lateralTarget - rs.lateral) * 0.05;
-      // 완주 체크
-      if (rs.s >= RACE_DIST){
+      // 완주 체크 (시작 위치 기준 상대 거리)
+      if ((rs.s - rs.s0) >= RACE_DIST){
         rs.finishedAt = raceT;
         if (rs.i === winIdx){
           winnerDone = true;
@@ -2160,17 +2185,20 @@ function horseAnim(picked, pool, seed) {
       w.baseV = meanV * 1.18;
       // 모든 앞 주자 속도 살짝 완화
       const sorted = state.slice().sort((a,b)=>b.s - a.s);
+      const wDist = w.s - w.s0;
       sorted.forEach((rs, idx) => {
         if (rs.i === winIdx) return;
-        if (rs.s > w.s - 30) rs.baseV = Math.min(rs.baseV, meanV * 0.98);
+        if ((rs.s - rs.s0) > wDist - 30) rs.baseV = Math.min(rs.baseV, meanV * 0.98);
       });
     }
-    // 최종 1% 구간: 당첨자를 확실히 1등으로
+    // 최종 1% 구간: 당첨자를 확실히 1등으로 (상대 거리 기준)
     if (remain < 800 && !winnerDone){
       const w = state[winIdx];
+      const wDist = w.s - w.s0;
       state.forEach(rs => {
         if (rs.i === winIdx) return;
-        if (rs.s >= w.s) rs.s = w.s - (3 + Math.random()*12);
+        const rsDist = rs.s - rs.s0;
+        if (rsDist >= wDist) rs.s = rs.s0 + wDist - (3 + Math.random()*12);
       });
     }
 
@@ -2211,7 +2239,7 @@ function horseAnim(picked, pool, seed) {
 
     // 보드
     const winP = state[winIdx].s / PERIM;
-    const lap = Math.min(TOTAL_LAPS, Math.floor(leader.s / PERIM) + 1);
+    const lap = Math.min(TOTAL_LAPS, Math.floor((leader.s - leader.s0) / PERIM) + 1);
     document.getElementById("horseLap").textContent = `LAP ${lap} / ${TOTAL_LAPS}`;
     document.getElementById("horseLead").textContent = `선두: ${(leader.r.name||"").slice(0,10)}`;
     document.getElementById("horseTime").textContent = (raceT/1000).toFixed(2) + "s";
@@ -2219,7 +2247,7 @@ function horseAnim(picked, pool, seed) {
     if (!winnerDone){
       if (raceT < 1200) $("horseHint").textContent = "🏁 그린라이트!";
       else if (forceWinnerMode) $("horseHint").innerHTML = `🔥 <b>파이널 랩 — 막판 승부!</b>`;
-      else $("horseHint").innerHTML = `선두 <b>${esc((leader.r.name||"").slice(0,10))}</b> — 2위와의 차이 ${Math.max(0, Math.round(leader.s - sorted[1].s))}m`;
+      else $("horseHint").innerHTML = `선두 <b>${esc((leader.r.name||"").slice(0,10))}</b> — 2위와의 차이 ${Math.max(0, Math.round((leader.s - leader.s0) - (sorted[1].s - sorted[1].s0)))}m`;
       requestAnimationFrame(frame);
     } else {
       const w = state[winIdx];
