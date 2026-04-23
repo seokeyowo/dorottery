@@ -1135,7 +1135,7 @@ function battleAnim(picked, pool, seed) {
     <div style="font-size:13px;color:#888;margin-bottom:10px">⚔️ 배틀로얄 — 생존 경쟁</div>
     <div id="battleShell" class="battle-shell">
       <canvas id="battle" width="${W}" height="${H}"
-        style="background:radial-gradient(ellipse at center,#3a2818,#1a0f08);
+        style="background:radial-gradient(ellipse at center,#ffffff,#ececec);
                border-radius:12px;max-width:100%;display:block;margin:0 auto"></canvas>
       <div id="battleFlash" class="battle-flash"></div>
       <div id="battleZoom" style="position:absolute;inset:0;pointer-events:none;border-radius:12px;box-shadow:inset 0 0 0 0 rgba(255,214,107,0);"></div>
@@ -1823,272 +1823,434 @@ function keycapAnim(picked, pool, seed) {
 // ── 경마 ─────────────────────────────────────
 function horseAnim(picked, pool, seed) {
   const winner = picked[0];
-  // 전원 참가 (제한 없음)
   let racers = pool.slice().sort(()=>Math.random()-0.5);
   const winIdx = racers.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
   const N = racers.length;
 
-  // 큰 캔버스 — 원형(타원) 경기장
   const W = 780, H = 560;
+  // ── F1 스타일 코너 + 직선 조합 트랙 (둥근 직사각형 + 꺾임 포인트) ──
+  // 간단화: 둥근 직사각형 트랙을 기본으로 하고, 상단 중간에 시케인(S자)을 추가
+  const PAD = 70;
+  const trackOuterW = W - PAD*2, trackOuterH = H - PAD*2;
+  const trackW = 76; // 트랙 폭
+  const cornerR = 110;
   const cx = W/2, cy = H/2;
-  const outerRx = 340, outerRy = 220;
-  // 레인 간격 (인원에 따라 자동)
-  const laneGap = Math.max(6, Math.min(20, Math.floor(140 / Math.max(N,1))));
-  const innerBuffer = 30; // 가장 안쪽 레인 안쪽의 잔디 여백
-  const horseFont = Math.max(14, Math.min(26, Math.floor(laneGap * 1.4)));
-  const nameFont = Math.max(9, Math.min(13, laneGap));
+  // 센터라인 반경
+  const cxMin = PAD + cornerR, cxMax = W - PAD - cornerR;
+  const cyMin = PAD + cornerR, cyMax = H - PAD - cornerR;
+  // 직선/코너 길이 계산 (센터라인)
+  const topLen    = (cxMax - cxMin);
+  const rightLen  = (cyMax - cyMin);
+  const bottomLen = (cxMax - cxMin);
+  const leftLen   = (cyMax - cyMin);
+  const arcLen    = Math.PI/2 * cornerR;
+  // 경로 순서 (반시계): 아래직선(우→좌) → 좌하코너 → 왼쪽직선(하→상) → 좌상코너 → 위직선(좌→우) → 우상코너 → 오른직선(상→하) → 우하코너 → 시작
+  const seg = [
+    { type:"line", len:bottomLen, x1:cxMax, y1:cyMax+cornerR, x2:cxMin, y2:cyMax+cornerR, a:Math.PI }, // 서쪽 향함
+    { type:"arc",  len:arcLen, cx:cxMin, cy:cyMax, r:cornerR, a0:Math.PI/2, a1:Math.PI, dir:+1 },
+    { type:"line", len:leftLen,   x1:cxMin-cornerR, y1:cyMax, x2:cxMin-cornerR, y2:cyMin, a:-Math.PI/2 },
+    { type:"arc",  len:arcLen, cx:cxMin, cy:cyMin, r:cornerR, a0:Math.PI, a1:3*Math.PI/2, dir:+1 },
+    { type:"line", len:topLen,    x1:cxMin, y1:cyMin-cornerR, x2:cxMax, y2:cyMin-cornerR, a:0 },
+    { type:"arc",  len:arcLen, cx:cxMax, cy:cyMin, r:cornerR, a0:3*Math.PI/2, a1:2*Math.PI, dir:+1 },
+    { type:"line", len:rightLen,  x1:cxMax+cornerR, y1:cyMin, x2:cxMax+cornerR, y2:cyMax, a:Math.PI/2 },
+    { type:"arc",  len:arcLen, cx:cxMax, cy:cyMax, r:cornerR, a0:0, a1:Math.PI/2, dir:+1 },
+  ];
+  const PERIM = seg.reduce((s,x)=>s+x.len,0);
+  function pathPos(sDist, lateralOff){
+    // sDist ∈ [0,PERIM), lateralOff: -trackW/2 .. +trackW/2 (양수 = 바깥쪽)
+    let s = ((sDist % PERIM) + PERIM) % PERIM;
+    for (const g of seg){
+      if (s <= g.len){
+        if (g.type === "line"){
+          const t = s / g.len;
+          const x = g.x1 + (g.x2 - g.x1) * t;
+          const y = g.y1 + (g.y2 - g.y1) * t;
+          // 수직 법선
+          const dx = Math.cos(g.a + Math.PI/2), dy = Math.sin(g.a + Math.PI/2);
+          return { x: x + dx*lateralOff, y: y + dy*lateralOff, a: g.a };
+        } else {
+          const t = s / g.len;
+          const ang = g.a0 + (g.a1 - g.a0) * t;
+          const rr = g.r + lateralOff;
+          const x = g.cx + Math.cos(ang) * rr;
+          const y = g.cy + Math.sin(ang) * rr;
+          // 진행 방향은 접선 (반시계 기준)
+          const tangent = ang + Math.PI/2;
+          return { x, y, a: tangent };
+        }
+      }
+      s -= g.len;
+    }
+    return { x:cx, y:cy, a:0 };
+  }
+
+  const carFont = Math.max(18, Math.min(30, Math.floor(52 - N*0.3)));
+  const nameFont = Math.max(9, Math.min(12, Math.floor(14 - N*0.05)));
 
   $("resultBody").innerHTML = `
-    <div style="font-size:13px;color:#888;margin-bottom:6px">🐎 경마 — 2바퀴 레이스</div>
-    <div id="horseWrap" style="position:relative;background:#0a2e1a;border-radius:14px;padding:8px;overflow:hidden;
-         box-shadow:inset 0 0 40px rgba(0,0,0,.5)">
+    <div style="font-size:13px;color:#888;margin-bottom:6px">🏎️ F1 그랑프리 — 3랩 레이스</div>
+    <div id="horseWrap" style="position:relative;background:linear-gradient(180deg,#1b2735,#0d1420);border-radius:14px;padding:8px;overflow:hidden;
+         box-shadow:inset 0 0 40px rgba(0,0,0,.6)">
       <canvas id="horseC" width="${W}" height="${H}" style="max-width:100%;display:block;border-radius:10px"></canvas>
       <div id="horseFlash" style="position:absolute;inset:0;pointer-events:none;background:rgba(255,255,255,0);transition:background .15s"></div>
     </div>
     <div id="horseBoard" style="margin-top:8px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px">
-      <div id="horseLap" style="color:var(--ink);font-weight:800;font-family:ui-monospace,monospace">LAP 1 / 2</div>
+      <div id="horseLap" style="color:var(--ink);font-weight:800;font-family:ui-monospace,monospace">LAP 1 / 3</div>
       <div id="horseLead" style="color:var(--accent);font-weight:700;font-family:ui-monospace,monospace">선두: —</div>
       <div id="horseTime" style="color:var(--muted);font-family:ui-monospace,monospace">00.00s</div>
     </div>
-    <div id="horseHint" style="margin-top:6px;font-size:13px;color:var(--muted);text-align:center">출발 준비 중…</div>`;
+    <div id="horseHint" style="margin-top:6px;font-size:13px;color:var(--muted);text-align:center">그리드 정렬 중…</div>`;
 
   const cv = document.getElementById("horseC"), ctx = cv.getContext("2d");
   const flashEl = document.getElementById("horseFlash");
-  const emojis = ["🐎","🐴","🦄"];
+  const carEmojis = ["🏎️","🚗","🚙","🛻","🏍️","🚓","🚕","🚘"];
 
-  const TOTAL_LAPS = 2;
-  const duration = 13000; // 긴장감 있게 13초
-  const winnerFinish = duration;
+  const TOTAL_LAPS = 3;
+  const duration = 16000; // 16초 — 역전 드라마 + 페이스 변동
+  const RACE_DIST = PERIM * TOTAL_LAPS;
 
-  // 각 주자의 개별 종료 시각: 당첨자가 가장 빠름
-  const racerState = racers.map((r, i) => {
-    // 당첨자는 duration, 나머지는 duration + spread
-    // 나머지 간에도 섞이기 위해 스프레드 넓게
-    const extra = i === winIdx ? 0 : (180 + Math.random() * 2400);
-    return {
-      r, i,
-      finish: duration + extra,
-      progress: 0,
-      laneR: outerRx - 18 - i * laneGap, // 레인 x 반경
-      laneRy: outerRy - 18 - i * laneGap, // 레인 y 반경
-      // 각 레이스 페이스 변동 (3단계 코사인 합성)
-      phase: Math.random() * Math.PI * 2,
-      freq: 0.0009 + Math.random() * 0.0008,
-      amp: 0.08 + Math.random() * 0.06,
-      finishedAt: null,
-    };
+  // 각 레이서 상태 (보정 없는 물리 베이스)
+  const state = racers.map((r, i) => ({
+    r, i,
+    s: -(i % 4) * 14 - Math.floor(i/4) * 6, // 그리드 시작 오프셋 (뒤쪽부터 약간 밀림)
+    v: 0,            // 현재 속도 (픽셀/ms)
+    targetV: 0,      // 목표 속도
+    baseV: 0,        // 레이서별 기본 속도 (당첨자가 살짝 빠름)
+    lateral: ((i % 5) - 2) * (trackW/6), // 레인 오프셋
+    lateralTarget: 0,
+    boost: 0,        // 남은 부스트 프레임
+    spin: 0,         // 스핀아웃 남은 프레임
+    finishedAt: null,
+    rank: i+1,
+    prevRank: i+1,
+    lastOvertakeAt: 0,
+  }));
+
+  // 목표 평균 속도 = RACE_DIST / duration
+  const meanV = RACE_DIST / duration;
+  state.forEach((rs, i) => {
+    // 당첨자는 평균 속도 + 미세 우위
+    rs.baseV = i === winIdx ? meanV * 1.02 : meanV * (0.93 + Math.random()*0.10);
+    rs.targetV = rs.baseV;
+    rs.lateralTarget = ((i % 5) - 2) * (trackW/6);
   });
 
-  // 시작 시점 (카운트다운 종료 후 재설정)
+  // 이벤트 로그
+  const events = [];
+  function pushEvent(txt, color="#ffd66b"){
+    events.unshift({ txt, color, at: performance.now() });
+    if (events.length > 3) events.pop();
+  }
+
   let start = performance.now();
-  const BASE_ANGLE = Math.PI / 2; // 출발선 = 아래쪽 (6시 방향). 반시계로 달림.
-
-  function progressAtTime(rs, t) {
-    // 0..TOTAL_LAPS 범위. 기본은 t/finish * TOTAL_LAPS (선형),
-    // smoothstep-ish easing for 드라마틱 시작/끝 + 페이스 변동
-    const raw = Math.min(1, t / rs.finish);
-    // 약간 ease: 초반 빠른 출발 → 중반 유지 → 종반 스퍼트 느낌
-    const eased = 0.5 - Math.cos(raw * Math.PI) * 0.5;
-    // 페이스 노이즈 (종반부에는 사라져서 결과 순서 보존)
-    const swing = Math.sin(t * rs.freq + rs.phase) * rs.amp * (1 - raw) * (1 - raw);
-    let p = eased * TOTAL_LAPS + swing;
-    // 다른 주자가 당첨자보다 앞서지 않도록 clamp: 당첨자 progress - tiny
-    // (뒷 처리에서 일괄 검사)
-    return Math.max(0, Math.min(TOTAL_LAPS, p));
-  }
-
-  function posAt(rs, progress) {
-    // progress in [0, TOTAL_LAPS]; 한 바퀴 = 2π. 반시계 → 각도 감소
-    const ang = BASE_ANGLE - (progress * Math.PI * 2);
-    return {
-      x: cx + Math.cos(ang) * rs.laneR,
-      y: cy + Math.sin(ang) * rs.laneRy,
-      a: ang,
-    };
-  }
+  let last = start;
+  let done = false;
+  let winnerDone = false;
+  let forceWinnerMode = false; // 종반에는 당첨자 보정
+  let boostCooldown = 0, spinCooldown = 0;
 
   function drawTrack() {
-    // 전체 잔디
-    const grd = ctx.createRadialGradient(cx, cy, 40, cx, cy, Math.max(W,H)/2);
-    grd.addColorStop(0, "#2c6a3a");
-    grd.addColorStop(1, "#12391f");
-    ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
-
-    // 트랙 전체(흙) — 외부 타원
-    ctx.fillStyle = "#c9a06a";
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, outerRx, outerRy, 0, 0, Math.PI*2);
-    ctx.fill();
-    // 안쪽 잔디 (가장 안쪽 레인 안쪽)
-    const innermostRx = Math.max(40, outerRx - 18 - (N-1)*laneGap - laneGap);
-    const innermostRy = Math.max(20, outerRy - 18 - (N-1)*laneGap - laneGap);
-    ctx.fillStyle = "#3e8a4e";
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, innermostRx, innermostRy, 0, 0, Math.PI*2);
-    ctx.fill();
-    // 안쪽 잔디 패턴 (광장)
-    ctx.strokeStyle = "rgba(255,255,255,.08)";
-    ctx.lineWidth = 1;
-    for (let k=0; k<innermostRy; k+=12) {
+    // 배경 아스팔트 느낌
+    ctx.fillStyle = "#0d1420"; ctx.fillRect(0,0,W,H);
+    // 잔디
+    ctx.fillStyle = "#1f7a3a";
+    ctx.fillRect(0,0,W,H);
+    // 트랙(짙은 아스팔트) — path 따라 두껍게 stroke
+    const drawPathStroke = (off, width, style) => {
+      ctx.save();
+      ctx.strokeStyle = style; ctx.lineWidth = width; ctx.lineCap = "butt";
       ctx.beginPath();
-      ctx.moveTo(cx - innermostRx*0.9, cy - innermostRy + k);
-      ctx.lineTo(cx + innermostRx*0.9, cy - innermostRy + k);
+      const steps = 300;
+      for (let k=0; k<=steps; k++){
+        const p = pathPos(PERIM * k/steps, off);
+        if (k===0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+      }
+      ctx.closePath();
       ctx.stroke();
-    }
-
-    // 레인 구분선 (흰 점선 타원)
+      ctx.restore();
+    };
+    drawPathStroke(0, trackW+8, "#222");       // 연석 외곽 테두리
+    drawPathStroke(0, trackW,   "#2b2d33");    // 실제 노면
+    // 빨/흰 연석 (코너)
     ctx.save();
-    ctx.strokeStyle = "rgba(255,255,255,.25)";
-    ctx.setLineDash([5,6]);
-    ctx.lineWidth = 1;
-    for (let i=0; i<=N; i++) {
-      const rx = outerRx - 8 - i * laneGap;
-      const ry = outerRy - 8 - i * laneGap;
-      if (rx < 30 || ry < 15) break;
-      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2); ctx.stroke();
+    ctx.lineWidth = 6;
+    ctx.setLineDash([10, 10]);
+    ctx.strokeStyle = "#d34b4b";
+    ctx.beginPath();
+    for (const g of seg){
+      if (g.type === "arc"){
+        const steps = 20;
+        for (let k=0; k<=steps; k++){
+          const ang = g.a0 + (g.a1-g.a0)*k/steps;
+          const rr = g.r + trackW/2 + 2;
+          const x = g.cx + Math.cos(ang)*rr, y = g.cy + Math.sin(ang)*rr;
+          if (k===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+      }
     }
+    ctx.stroke();
     ctx.restore();
 
-    // 출발/결승선 (아래쪽, 6시 방향에서 수직)
+    // 센터 점선
     ctx.save();
-    const fx = cx;
-    const fyOuter = cy + outerRy - 4;
-    const fyInner = cy + (outerRy - laneGap*N - 18);
-    // 체커 패턴
-    for (let y = fyInner; y < fyOuter; y += 8) {
-      ctx.fillStyle = ((y/8)|0) % 2 === 0 ? "#fff" : "#222";
-      ctx.fillRect(fx - 3, y, 6, 8);
+    ctx.strokeStyle = "rgba(255,255,255,.35)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([14, 14]);
+    ctx.beginPath();
+    const steps = 160;
+    for (let k=0; k<=steps; k++){
+      const p = pathPos(PERIM * k/steps, 0);
+      if (k===0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
     }
-    // FINISH 텍스트
+    ctx.closePath(); ctx.stroke();
+    ctx.restore();
+
+    // 스타트/피니시 라인 (남쪽 직선 중앙)
+    const sf = pathPos(seg[0].len * 0.5, 0); // bottom segment 중앙
+    ctx.save();
+    // 체커 패턴 (폭 = trackW)
+    for (let i=-trackW/2; i<trackW/2; i+=8){
+      ctx.fillStyle = ((i/8)|0) % 2 === 0 ? "#fff" : "#222";
+      // 라인은 수직 방향 (경로 법선)
+      const nx = Math.cos(sf.a + Math.PI/2), ny = Math.sin(sf.a + Math.PI/2);
+      ctx.fillRect(sf.x + nx*i - 4, sf.y + ny*i - 4, 8, 8);
+    }
     ctx.fillStyle = "#fff";
-    ctx.font = "bold 11px system-ui";
+    ctx.font = "bold 12px system-ui";
     ctx.textAlign = "center";
-    ctx.fillText("FINISH", fx, fyOuter + 16);
+    ctx.fillText("START / FINISH", sf.x, sf.y + 40);
     ctx.restore();
   }
 
-  function drawHorse(rs, isLeader, isWinner, done) {
-    const pos = posAt(rs, rs.progress);
-    // 바운스 + 트랙 접선방향 살짝 기울이기
-    const dt = performance.now() - start;
-    const bob = Math.sin(dt * 0.02 + rs.i) * 2;
-    // 말 이모지
+  function drawCar(rs, isLeader, isWinnerCar) {
+    const p = pathPos(rs.s, rs.lateral);
+    const spinAng = rs.spin > 0 ? (rs.spin * 0.6) : 0;
     ctx.save();
-    ctx.translate(pos.x, pos.y + bob);
-    // 반시계 방향으로 달리므로 이모지가 진행방향 보도록 flip (아래 반원에서는 오른쪽, 위 반원에서는 왼쪽)
-    // 진행 방향 벡터: d/da (Rx cos, Ry sin) = (-Rx sin, Ry cos). 반시계(각도 감소)므로 반대.
-    const tx = Math.sin(pos.a) * rs.laneR;
-    const flip = tx > 0 ? 1 : -1;
-    ctx.scale(flip, 1);
-    ctx.font = horseFont + "px serif";
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.a + spinAng);
+    // 차량은 경로 방향을 정면으로. 이모지는 방향 없으므로 통일된 각도만.
+    // 위쪽 반원에서 이모지가 거꾸로 보이므로 세로 뒤집기 보정: 접선각 기준 상하
+    const up = Math.sin(p.a) < -0.1; // 진행방향이 위쪽일 때 차량 뒤집힘 방지
+    // 간단히 rotation 후 거울처리: rotate은 이모지는 여전히 머리→꼬리 방향 고정이라 큰 영향 X
+    // 부스트 트레일
+    if (rs.boost > 0){
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = "#ffd66b";
+      for (let k=1; k<=4; k++){
+        ctx.beginPath();
+        ctx.arc(-k*7, (Math.random()-0.5)*6, 5 - k*0.7, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (rs.v > meanV * 0.9) {
+      // 일반 속도선
+      ctx.strokeStyle = "rgba(255,255,255,.25)";
+      ctx.lineWidth = 1.5;
+      for (let k=0; k<3; k++){
+        ctx.beginPath();
+        ctx.moveTo(-6 - k*4, -3 + k*3);
+        ctx.lineTo(-14 - k*4, -3 + k*3);
+        ctx.stroke();
+      }
+    }
+    ctx.font = carFont + "px system-ui";
+    ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
-    if (done) ctx.globalAlpha = 0.45;
-    ctx.fillText(emojis[rs.i % emojis.length], 0, 0);
-    ctx.restore();
-
-    // 이름표 (작게, 말 위)
-    ctx.save();
-    ctx.translate(pos.x, pos.y + bob);
-    ctx.font = `bold ${nameFont}px system-ui`;
-    ctx.textAlign = "center";
-    ctx.fillStyle = isWinner ? "#ffd66b" : (isLeader ? "#fff" : "rgba(255,255,255,.85)");
-    ctx.strokeStyle = "rgba(0,0,0,.75)";
+    if (rs.finishedAt) ctx.globalAlpha = 0.5;
+    const emoji = carEmojis[rs.i % carEmojis.length];
+    ctx.fillText(emoji, 0, 0);
+    // 랭크 배지
+    ctx.rotate(-(p.a + spinAng));
+    ctx.fillStyle = isWinnerCar ? "#ffd66b" : (isLeader ? "#fff" : "rgba(255,255,255,.8)");
+    ctx.strokeStyle = "rgba(0,0,0,.85)";
     ctx.lineWidth = 3;
-    const label = `${rs.i+1}.${(rs.r.name||"").slice(0,8)}`;
-    ctx.strokeText(label, 0, -horseFont*0.65);
-    ctx.fillText(label, 0, -horseFont*0.65);
+    ctx.font = `bold ${nameFont+1}px system-ui`;
+    ctx.textAlign = "center";
+    const label = `#${rs.rank} ${(rs.r.name||"").slice(0,8)}`;
+    ctx.strokeText(label, 0, -carFont*0.55);
+    ctx.fillText(label, 0, -carFont*0.55);
     ctx.restore();
   }
 
-  let winnerDone = false;
-  let finishedCount = 0;
-  const results = [];
-
-  function frame(now) {
-    const dt = now - start;
-
-    // progress 업데이트 + 당첨자 독주 보장 (다른 주자가 당첨자보다 앞서지 않도록 clamp)
-    const winP = progressAtTime(racerState[winIdx], dt);
-    racerState[winIdx].progress = winP;
-    racerState.forEach(rs => {
-      if (rs.i === winIdx) return;
-      let p = progressAtTime(rs, dt);
-      // 당첨자의 progress보다 약간 뒤쪽으로 clamp (최소 0.005 차이)
-      if (p >= winP - 0.002) p = winP - 0.002 - Math.random() * 0.015;
-      rs.progress = Math.max(0, p);
+  function updateRanks(){
+    const sorted = state.slice().sort((a,b) => b.s - a.s);
+    sorted.forEach((rs, idx) => {
+      rs.prevRank = rs.rank;
+      rs.rank = idx + 1;
     });
+    // 추월 감지
+    sorted.forEach(rs => {
+      if (rs.rank < rs.prevRank && performance.now() - rs.lastOvertakeAt > 600 && rs.rank <= 3){
+        rs.lastOvertakeAt = performance.now();
+        pushEvent(`⚡ ${esc((rs.r.name||"").slice(0,8))} P${rs.prevRank}→P${rs.rank} 추월!`, "#6ad68a");
+      }
+    });
+    return sorted;
+  }
 
-    // 완주 감지
-    racerState.forEach(rs => {
-      if (!rs.finishedAt && rs.progress >= TOTAL_LAPS - 0.005) {
-        rs.finishedAt = dt;
-        results.push(rs);
-        finishedCount++;
-        if (rs.i === winIdx) {
+  function frame(now){
+    const dt = Math.min(40, now - last);
+    last = now;
+    const raceT = now - start;
+
+    // 페이스 변화 (랜덤 부스트/스핀 이벤트) — 극적인 역전
+    boostCooldown -= dt;
+    spinCooldown -= dt;
+    if (boostCooldown <= 0 && !winnerDone){
+      // 뒷순위 중 한 명에게 부스트
+      const sorted = state.slice().sort((a,b) => b.s - a.s);
+      const pool2 = sorted.slice(Math.floor(sorted.length/2));
+      if (pool2.length > 0){
+        const lucky = pool2[Math.floor(Math.random()*pool2.length)];
+        if (!lucky.finishedAt){
+          lucky.boost = 60;
+          pushEvent(`💨 ${esc((lucky.r.name||"").slice(0,8))} 니트로 부스트!`, "#ffd66b");
+        }
+      }
+      boostCooldown = 1400 + Math.random()*1800;
+    }
+    if (spinCooldown <= 0 && !winnerDone && raceT < duration*0.75){
+      // 앞순위 중 한 명이 스핀 (단, 당첨자는 제외)
+      const sorted = state.slice().sort((a,b) => b.s - a.s);
+      const front = sorted.slice(0, Math.max(1, Math.floor(sorted.length/2))).filter(x => x.i !== winIdx);
+      if (front.length > 0 && Math.random() < 0.7){
+        const victim = front[Math.floor(Math.random()*front.length)];
+        if (!victim.finishedAt && !victim.spin){
+          victim.spin = 35;
+          victim.v *= 0.3;
+          pushEvent(`💥 ${esc((victim.r.name||"").slice(0,8))} 스핀아웃!`, "#ff6b6b");
+        }
+      }
+      spinCooldown = 2200 + Math.random()*2500;
+    }
+
+    // 각 레이서 업데이트
+    for (const rs of state){
+      if (rs.finishedAt) continue;
+      // 목표 속도 계산: baseV + sin 변동
+      const osc = Math.sin(raceT*0.002 + rs.i*1.7) * 0.18 + Math.sin(raceT*0.0009 + rs.i*0.6) * 0.12;
+      let tV = rs.baseV * (1 + osc);
+      if (rs.boost > 0){ tV = rs.baseV * 1.9; rs.boost--; }
+      if (rs.spin > 0){ tV = rs.baseV * 0.15; rs.spin--; }
+      rs.targetV = tV;
+      // 속도 보간 (관성)
+      rs.v += (rs.targetV - rs.v) * 0.08;
+      rs.s += rs.v * dt;
+      // 레인 보간 (추월시 살짝 바깥으로)
+      rs.lateralTarget = ((rs.i % 5) - 2) * (trackW/6) + (rs.spin>0? (Math.random()-0.5)*10:0);
+      rs.lateral += (rs.lateralTarget - rs.lateral) * 0.05;
+      // 완주 체크
+      if (rs.s >= RACE_DIST){
+        rs.finishedAt = raceT;
+        if (rs.i === winIdx){
           winnerDone = true;
           flashEl.style.background = "rgba(255,214,107,.45)";
           setTimeout(() => flashEl.style.background = "rgba(255,255,255,0)", 200);
         }
       }
-    });
-
-    drawTrack();
-
-    // 주자 그리기: 뒤쪽(레인 바깥)부터 → 당첨자 맨 위로 오도록
-    const order = racerState.slice().sort((a,b) => a.laneR - b.laneR);
-    // 선두 판정 (진행도 최고)
-    const leader = racerState.slice().sort((a,b) => b.progress - a.progress)[0];
-    order.forEach(rs => {
-      drawHorse(rs, rs === leader, rs.i === winIdx, !!rs.finishedAt);
-    });
-
-    // 보드 업데이트
-    const lap = Math.min(TOTAL_LAPS, Math.floor(winP) + 1);
-    document.getElementById("horseLap").textContent = `LAP ${lap} / ${TOTAL_LAPS}`;
-    document.getElementById("horseLead").textContent = `선두: ${(leader.r.name||"").slice(0,12)}`;
-    document.getElementById("horseTime").textContent = (dt/1000).toFixed(2) + "s";
-
-    // 종반 긴장감: 당첨자가 마지막 10% 진입 시 화면 살짝 톤다운
-    if (winP > TOTAL_LAPS * 0.9 && !winnerDone) {
-      ctx.fillStyle = "rgba(0,0,0,.12)";
-      ctx.fillRect(0,0,W,H);
-      $("horseHint").innerHTML = `🔥 <b>막판 스퍼트!</b> 선두 ${esc((leader.r.name||"").slice(0,12))}`;
-    } else if (!winnerDone) {
-      if (winP < 0.3) $("horseHint").textContent = "🏁 출발!";
-      else if (winP < TOTAL_LAPS - 1) $("horseHint").textContent = "🐎 중반전...";
-      else $("horseHint").innerHTML = `🔥 마지막 바퀴 — 선두 <b>${esc((leader.r.name||"").slice(0,12))}</b>`;
     }
 
-    if (!winnerDone) {
+    // 종반 보정: 남은 시간 기준 당첨자 보정
+    const remain = duration - raceT;
+    if (remain < 3500 && !winnerDone){
+      forceWinnerMode = true;
+      const w = state[winIdx];
+      // 당첨자 부스트 지속
+      w.baseV = meanV * 1.18;
+      // 모든 앞 주자 속도 살짝 완화
+      const sorted = state.slice().sort((a,b)=>b.s - a.s);
+      sorted.forEach((rs, idx) => {
+        if (rs.i === winIdx) return;
+        if (rs.s > w.s - 30) rs.baseV = Math.min(rs.baseV, meanV * 0.98);
+      });
+    }
+    // 최종 1% 구간: 당첨자를 확실히 1등으로
+    if (remain < 800 && !winnerDone){
+      const w = state[winIdx];
+      state.forEach(rs => {
+        if (rs.i === winIdx) return;
+        if (rs.s >= w.s) rs.s = w.s - (3 + Math.random()*12);
+      });
+    }
+
+    // 렌더
+    drawTrack();
+    // 그림자
+    ctx.fillStyle = "rgba(0,0,0,.35)";
+    state.forEach(rs => {
+      const p = pathPos(rs.s, rs.lateral);
+      ctx.beginPath(); ctx.ellipse(p.x, p.y + carFont*0.35, carFont*0.4, carFont*0.15, 0, 0, Math.PI*2); ctx.fill();
+    });
+
+    const sorted = updateRanks();
+    const leader = sorted[0];
+    // 뒤에서부터 그려 선두가 위로
+    for (let i = state.length - 1; i >= 0; i--){
+      const rs = sorted[i];
+      drawCar(rs, rs === leader, rs.i === winIdx);
+    }
+
+    // 이벤트 오버레이
+    const now2 = performance.now();
+    ctx.save();
+    ctx.textAlign = "left";
+    ctx.font = "bold 13px system-ui";
+    for (let k = 0; k < events.length; k++){
+      const e = events[k];
+      const age = now2 - e.at;
+      if (age > 2200) continue;
+      const a = Math.min(1, 1 - age/2200);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = "rgba(0,0,0,.65)";
+      ctx.fillRect(12, 12 + k*22, 280, 20);
+      ctx.fillStyle = e.color;
+      ctx.fillText(e.txt, 18, 27 + k*22);
+    }
+    ctx.restore();
+
+    // 보드
+    const winP = state[winIdx].s / PERIM;
+    const lap = Math.min(TOTAL_LAPS, Math.floor(leader.s / PERIM) + 1);
+    document.getElementById("horseLap").textContent = `LAP ${lap} / ${TOTAL_LAPS}`;
+    document.getElementById("horseLead").textContent = `선두: ${(leader.r.name||"").slice(0,10)}`;
+    document.getElementById("horseTime").textContent = (raceT/1000).toFixed(2) + "s";
+
+    if (!winnerDone){
+      if (raceT < 1200) $("horseHint").textContent = "🏁 그린라이트!";
+      else if (forceWinnerMode) $("horseHint").innerHTML = `🔥 <b>파이널 랩 — 막판 승부!</b>`;
+      else $("horseHint").innerHTML = `선두 <b>${esc((leader.r.name||"").slice(0,10))}</b> — 2위와의 차이 ${Math.max(0, Math.round(leader.s - sorted[1].s))}m`;
       requestAnimationFrame(frame);
     } else {
-      // 당첨자 우승 연출: 당첨자 말 주위 금색 링
-      const w = racerState[winIdx];
-      const pos = posAt(w, Math.min(TOTAL_LAPS, w.progress));
+      const w = state[winIdx];
+      const p = pathPos(w.s, w.lateral);
       ctx.save();
       ctx.strokeStyle = "#ffd66b";
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 5;
       ctx.shadowBlur = 20; ctx.shadowColor = "#ffd66b";
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, horseFont*0.9, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p.x, p.y, carFont*0.9, 0, Math.PI*2); ctx.stroke();
       ctx.restore();
-      $("horseHint").innerHTML = `🏆 <b>${esc(winner.name)}</b> 우승! (${(dt/1000).toFixed(2)}s)`;
+      $("horseHint").innerHTML = `🏆 <b>${esc(winner.name)}</b> 우승! (${(raceT/1000).toFixed(2)}s)`;
       setTimeout(() => renderResult(picked), 1500);
     }
   }
-  // 출발 카운트다운 (3, 2, 1, GO!)
+
+  // 카운트다운 (3,2,1,GO!)
   let count = 3;
   const cd = setInterval(() => {
     drawTrack();
-    ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.fillRect(0,0,W,H);
-    ctx.fillStyle = count === 0 ? "#ffd66b" : "#fff";
-    ctx.font = "bold 120px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = count === 0 ? "#6ade8a" : (count === 1 ? "#ffd66b" : "#ff6b6b");
+    ctx.font = "bold 130px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(count > 0 ? String(count) : "GO!", cx, cy);
+    // 그리드에 차량 미리 배치
+    state.forEach(rs => drawCar(rs, false, rs.i === winIdx));
     if (count < 0) {
       clearInterval(cd);
-      flashEl.style.background = "rgba(255,255,255,.4)";
+      flashEl.style.background = "rgba(106,222,138,.35)";
       setTimeout(() => flashEl.style.background = "rgba(255,255,255,0)", 150);
-      start = performance.now(); // 실제 레이스 시작 시점
+      start = performance.now();
+      last = start;
       requestAnimationFrame(frame);
       return;
     }
