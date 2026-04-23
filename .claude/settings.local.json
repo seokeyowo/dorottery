@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell(Get-Command node,npm -ErrorAction SilentlyContinue; Get-ChildItem \"C:\\\\Program Files\\\\nodejs\",\"$env:APPDATA\\\\npm\",\"$env:ProgramFiles\\\\nodejs\" -ErrorAction SilentlyContinue | Select-Object -First 5)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;$env:PATH\"; npm run build 2>&1 | Select-Object -Last 40)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;$env:PATH\"; git add package.json bootstrap.js server.js public/index.html; git status --short)",
+      "PowerShell(git pull --rebase)",
+      "PowerShell(git push)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;$env:PATH\"; npm run build 2>&1 | Select-Object -Last 10)",
+      "PowerShell(git commit -m \"v1.2.1: profile progress stream + speed\" -m \"- /api/profiles/stream NDJSON: emit each user as it completes\" -m \"- client shows 'N / total done, ETA ~Xs' in real time\" -m \"- reuse popupHtml from comments: most users resolved without gallog hit\" -m \"- worker concurrency 1 to 3, sleep 500ms to 250ms\" -m \"Co-Authored-By: Claude Opus 4.7 \\(1M context\\) <noreply@anthropic.com>\")",
+      "PowerShell(gh release create v1.2.1 dist/DororongLottery.exe --title \"v1.2.1 - ������ ��ȸ ����� + �ӵ� ����\" --notes \"## �ǽð� �����`n- �ۼ��� ���� ��ȸ �� 'N / M �� ��ȸ �Ϸ� �� ���� �ð� �� X��' ǥ��`n- ������ �� �� ���� ������ ��� ��Ʈ���� \\(NDJSON\\)`n`n## �ӵ� ����`n- ��� �˾� HTML ��Ȱ��: ��κ��� ����ڴ� ���α� ��û ���� ��� ��� ȹ��`n- ���α� �ʿ��� ��� ��Ŀ 3�� ���� \\(���� 1��\\), ��û ���� 250ms \\(���� 500ms\\)\")",
+      "PowerShell(git add package.json server.js public/index.html)",
+      "PowerShell(git commit -m \"v1.3.1: ����/���� 2�� �з� \\(������ ���� ����\\)\" -m \"- �� �� ������\\(�Ŵ���/�θŴ���/����/�Ǻ�\\)�� ������ ����, ������ ����\" -m \"- �͸�/�ݰ��� ���� ���� ���� \\(HTML�� ������ �����Ͽ� �ŷ� �Ұ�\\)\" -m \"- ���� �ܼ�ȭ: '���� ����' �ϳ��� ����\" -m \"Co-Authored-By: Claude Opus 4.7 \\(1M context\\) <noreply@anthropic.com>\")",
+      "PowerShell(gh auth status 2>&1)",
+      "PowerShell(gh api user --jq .login)"
+    ]
+  }
+}

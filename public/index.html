@@ -183,7 +183,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.6.0</div>
+  <div class="ver">v1.7.0</div>
 </header>
 
 <div class="layout">
@@ -655,7 +655,7 @@ function refreshPool() {
   $("drawBtn").disabled = pool.length === 0;
   if (!state.comments.length) { $("pool").innerHTML = "아직 게시글을 불러오지 않았습니다."; return; }
   if (!pool.length) { $("pool").innerHTML = '<div class="muted" style="padding:8px">필터 조건에 맞는 후보가 없습니다.</div>'; return; }
-  $("pool").innerHTML = pool.slice(0, 200).map(c => {
+  $("pool").innerHTML = pool.map(c => {
     const p = state.profiles[c.userId];
     const stat = p ? `글 ${p.posts} / 댓 ${p.replies} / 합 ${(Number(p.posts)||0)+(Number(p.replies)||0)}` : "정보 조회 중";
     const tag = c.type === 'fixed' ? '고닉' : '유동';
@@ -663,7 +663,7 @@ function refreshPool() {
       <span class="pool-tag ${c.type}">${tag}</span>
       <span class="pool-text">${esc(c.text)}</span>
       <span class="pool-stats">${stat}</span></div>`;
-  }).join("") + (pool.length > 200 ? `<div class="muted" style="padding:8px">…외 ${pool.length-200}명</div>` : "");
+  }).join("");
 }
 
 ["includeKw","excludeKw","excludeFloating","excludeDccon","dedup","usePostCommentSum","winnerCount"].forEach(id => {
@@ -773,14 +773,8 @@ function renderResult(picked, seed) {
 function rouletteAnim(picked, pool, seed) {
   const W = 420, H = 420, cx = W/2, cy = H/2, R = 180;
   const winner = picked[0];
-  // 최대 24개까지 표시 (많으면 당첨자 + 무작위 샘플)
-  const MAX = Math.min(pool.length, 24);
-  let wheel = pool.slice();
-  if (wheel.length > MAX) {
-    const others = wheel.filter(p => (p.userId||p.name) !== (winner.userId||winner.name));
-    others.sort(()=>Math.random()-0.5);
-    wheel = [winner, ...others.slice(0, MAX-1)].sort(()=>Math.random()-0.5);
-  }
+  // 전원 표시 (제한 없음) — 인원 많으면 라벨 자동 축소
+  let wheel = pool.slice().sort(()=>Math.random()-0.5);
   const winIdx = wheel.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
   const N = wheel.length;
   const slice = (Math.PI*2) / N;
@@ -827,10 +821,12 @@ function rouletteAnim(picked, pool, seed) {
       // 이름 텍스트
       c.save();
       c.rotate(a0 + slice/2);
-      c.fillStyle = "#2a2520"; c.font = `bold ${N<=12?14:11}px system-ui`;
+      const fs = N<=12 ? 14 : (N<=24 ? 11 : (N<=60 ? 8 : 6));
+      c.fillStyle = "#2a2520"; c.font = `bold ${fs}px system-ui`;
       c.textAlign = "right"; c.textBaseline = "middle";
-      const name = (wheel[i].name || "").slice(0, N<=12?10:8);
-      c.fillText(name, R-10, 0);
+      const maxChars = N<=12 ? 10 : (N<=24 ? 8 : (N<=60 ? 6 : 4));
+      const name = (wheel[i].name || "").slice(0, maxChars);
+      c.fillText(name, R-6, 0);
       c.restore();
     }
     c.restore();
@@ -1461,75 +1457,152 @@ async function captureResult() {
 // ── 키캡 뽑기 ───────────────────────────────────
 function keycapAnim(picked, pool, seed) {
   const winner = picked[0];
-  // 전원 참가 (제한 없음)
+  // 전원 참가
   const keys = pool.slice().sort(()=>Math.random()-0.5);
   const winIdx = keys.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
   const N = keys.length;
 
-  // 인원에 따라 키캡 사이즈 자동 조정 (많으면 작게)
-  let capSize, perRow;
-  if (N <= 24)      { capSize = 64; perRow = 8; }
-  else if (N <= 60) { capSize = 52; perRow = 10; }
-  else if (N <= 120){ capSize = 42; perRow = 12; }
-  else              { capSize = 34; perRow = 14; }
-  const gap = Math.max(4, Math.floor(capSize * 0.12));
-  const fontSz = Math.max(8, Math.floor(capSize * 0.18));
+  // ── 실제 ANSI 키보드 레이아웃 기반 ──
+  // 인원에 따라 키캡 크기 자동 조정
+  let U; // 1U 크기 (px)
+  if      (N <= 30)  U = 42;
+  else if (N <= 80)  U = 34;
+  else if (N <= 180) U = 26;
+  else               U = 20;
+  const gap = Math.max(2, Math.floor(U * 0.1));
+  const fontSz = Math.max(7, Math.floor(U * 0.32));
+  const modFontSz = Math.max(6, Math.floor(U * 0.22));
 
-  // 실제 기계식 키보드 느낌: 각 행을 살짝 stagger, 키캡은 체리 프로파일 스타일
-  // 행별로 이름을 나눔 (열 기준 grid) — 행마다 가로 오프셋을 다르게 주어 ANSI 느낌
-  const rowOffsets = [0, capSize*0.35, capSize*0.7, capSize*1.1, capSize*0.5, 0]; // 반복
+  // 이름 글자수 (키캡 안에 들어갈 수 있는 정도)
+  const maxChars = Math.max(3, Math.floor(U / 5));
+
+  // 키 정의: {type, label, w(units), idx?}
+  // type: "p" 참가자(클릭/스윕 대상), "m" 모디파이어(장식), "s" 스페이스
+  // 참가자는 메인 4개 행(숫자/QWERTY/ASDF/ZXCV)에 배치
+  // 한 행에 participant 수를 넘기면 행 추가 (연속해서 참가자 행을 늘림)
+  const MAIN_ROW_WIDTH = 13; // 참가자 행의 참가자 키 수
+  const participantRowCount = Math.max(4, Math.ceil(N / MAIN_ROW_WIDTH));
+  // 실제 각 행당 참가자 수 (마지막 행만 부족할 수 있음)
+  const rowSizes = [];
+  let remaining = N;
+  for (let r = 0; r < participantRowCount; r++) {
+    const take = Math.min(MAIN_ROW_WIDTH, remaining);
+    rowSizes.push(take);
+    remaining -= take;
+  }
+
+  // 참가자 키 분배 (순서대로)
+  let pi = 0;
+  const nextP = () => ({ type: "p", label: (keys[pi]?.name||"").slice(0, maxChars), w: 1, idx: pi++ });
+
+  // 모디파이어 정의 helpers
+  const m = (label, w=1) => ({ type: "m", label, w });
+
+  // 각 행: 왼쪽 모디파이어 + 참가자 + 오른쪽 모디파이어
   const rows = [];
-  for (let i = 0; i < N; i += perRow) rows.push(keys.slice(i, i + perRow).map((p, j) => ({ p, idx: i + j })));
+  // 최상단 Function 행 (장식): Esc F1-F12 (1U 전체 너비 보정용 스페이서 없이)
+  rows.push([
+    m("Esc"),
+    ...Array.from({length:12}, (_,i)=>m("F"+(i+1))),
+  ]);
+  // 참가자 행들 — 행별로 왼쪽/오른쪽 모디파이어 다름
+  const edgeLeft  = ["` ", "Tab", "Caps", "Shift"]; // 숫자/Q/A/Z 행 순
+  const edgeLeftW = [1, 1.5, 1.75, 2.25];
+  const edgeRight = ["⌫",  "\\",  "Enter","Shift"];
+  const edgeRightW= [2,   1.5,   2.25,  2.75];
+  for (let r = 0; r < participantRowCount; r++) {
+    // 이름이 들어갈 참가자 키
+    const pKeys = Array.from({length: rowSizes[r]}, () => nextP());
+    // 참가자 부족으로 행이 꽉 안 차면 빈 자리를 빈 키캡으로 채움
+    const fillers = Array.from({length: MAIN_ROW_WIDTH - rowSizes[r]}, () => m(""));
+    // 행 인덱스별 모디파이어 선택 (4개까진 각자, 그 이후는 4번째(Shift) 재사용)
+    const ei = Math.min(r, 3);
+    rows.push([
+      m(edgeLeft[ei], edgeLeftW[ei]),
+      ...pKeys,
+      ...fillers,
+      m(edgeRight[ei], edgeRightW[ei]),
+    ]);
+  }
+  // 맨 아래 스페이스바 행
+  rows.push([
+    m("Ctrl", 1.25), m("Win", 1.25), m("Alt", 1.25),
+    { type: "s", label: "", w: 6.25 },
+    m("Alt", 1.25), m("Win", 1.25), m("Menu", 1.25), m("Ctrl", 1.25),
+  ]);
 
-  const rowsHtml = rows.map((row, rIdx) => {
-    const off = rowOffsets[rIdx % rowOffsets.length];
-    return `<div class="krow" style="display:flex;gap:${gap}px;margin-left:${off}px;margin-bottom:${gap}px">
-      ${row.map(({p, idx}) => `
-        <div class="keycap" data-i="${idx}" style="
-          width:${capSize}px;height:${capSize}px;
-          position:relative;border-radius:${Math.max(4, capSize*0.12)}px ${Math.max(4, capSize*0.12)}px ${Math.max(6, capSize*0.15)}px ${Math.max(6, capSize*0.15)}px;
-          background:linear-gradient(180deg,#3a3631 0%,#2a2621 100%);
-          box-shadow:
-            inset 0 -2px 0 #1a1712,
-            inset 0 1px 0 rgba(255,255,255,.05),
-            0 ${Math.max(3, capSize*0.08)}px 0 #14110e,
-            0 ${Math.max(5, capSize*0.11)}px 10px rgba(0,0,0,.5);
-          padding:${Math.max(3, capSize*0.08)}px ${Math.max(2, capSize*0.06)}px ${Math.max(6, capSize*0.14)}px;
-          transition:transform .12s, box-shadow .12s, background .12s">
-          <div class="kcap-top" style="
-            position:absolute;inset:${Math.max(2, capSize*0.08)}px ${Math.max(2, capSize*0.08)}px ${Math.max(6, capSize*0.18)}px;
-            border-radius:${Math.max(3, capSize*0.09)}px;
-            background:linear-gradient(180deg,#5a544c 0%,#4a443c 60%,#3a342c 100%);
-            box-shadow:inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.3);
-            display:flex;align-items:center;justify-content:center;
-            font-size:${fontSz}px;font-weight:800;color:#e8e3d3;
-            font-family:'Consolas','Menlo',monospace;
-            text-align:center;line-height:1.1;letter-spacing:-.3px;
-            overflow:hidden;padding:2px;word-break:break-all">
-            ${esc((p.name||"").slice(0, Math.max(4, Math.floor(capSize/7))))}
-          </div>
-        </div>`).join("")}
+  function keyCapHtml(k) {
+    const w = Math.round(k.w * U);
+    const h = U;
+    const isParticipant = k.type === "p";
+    const isSpace = k.type === "s";
+    const labelFS = isParticipant ? fontSz : modFontSz;
+    const labelColor = isParticipant ? "#e8e3d3" : "#b8b09a";
+    const dataAttr = isParticipant ? `data-i="${k.idx}"` : "";
+    const cls = isParticipant ? "keycap" : (isSpace ? "keycap space" : "keycap mod");
+    return `<div class="${cls}" ${dataAttr} style="
+      width:${w}px;height:${h}px;flex:0 0 ${w}px;
+      position:relative;
+      border-radius:${Math.max(3, U*0.1)}px ${Math.max(3, U*0.1)}px ${Math.max(4, U*0.14)}px ${Math.max(4, U*0.14)}px;
+      background:linear-gradient(180deg,#2e2a25 0%,#1f1b17 100%);
+      box-shadow:
+        inset 0 -1px 0 #14110e,
+        inset 0 1px 0 rgba(255,255,255,.04),
+        0 ${Math.max(2, U*0.08)}px 0 #0e0c0a,
+        0 ${Math.max(3, U*0.1)}px 8px rgba(0,0,0,.5);
+      padding:${Math.max(2, U*0.06)}px;
+      transition:transform .1s, box-shadow .1s, background .1s">
+      <div class="kcap-top" style="
+        position:absolute;inset:${Math.max(2, U*0.07)}px ${Math.max(2, U*0.07)}px ${Math.max(4, U*0.14)}px;
+        border-radius:${Math.max(2, U*0.08)}px;
+        background:linear-gradient(180deg,#4a433a 0%,#3a342c 55%,#2a251f 100%);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.1), inset 0 -1px 0 rgba(0,0,0,.3);
+        display:flex;align-items:center;justify-content:center;
+        font-size:${labelFS}px;font-weight:700;color:${labelColor};
+        font-family:'Consolas','Menlo','DejaVu Sans Mono',monospace;
+        text-align:center;line-height:1.1;letter-spacing:-.3px;
+        overflow:hidden;padding:1px 2px;word-break:break-all">
+        ${esc(k.label)}
+      </div>
     </div>`;
-  }).join("");
+  }
 
+  const rowsHtml = rows.map(row =>
+    `<div class="krow" style="display:flex;gap:${gap}px;margin-bottom:${gap}px;justify-content:center">
+      ${row.map(keyCapHtml).join("")}
+    </div>`).join("");
+
+  // 기능 행(최상단)은 살짝 gap을 줘서 구분감
+  // 케이스 프레임: 알루미늄 베젤 + 상단 인디케이터 LED
   $("resultBody").innerHTML = `
-    <div style="font-size:13px;color:#888;margin-bottom:10px">⌨️ 키캡 뽑기 — ${N}키 풀커스텀 빌드</div>
-    <div id="kbBody" style="padding:${capSize*0.4}px ${capSize*0.4}px ${capSize*0.3}px;
-         background:linear-gradient(180deg,#6b655c 0%,#4a443c 40%,#2a2520 100%);
-         border-radius:${capSize*0.25}px;
-         box-shadow:0 10px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);
+    <div style="font-size:13px;color:#888;margin-bottom:10px">⌨️ 키캡 뽑기 — ${N}키 커스텀</div>
+    <div id="kbBody" style="padding:${U*0.5}px ${U*0.5}px ${U*0.5}px;
+         background:linear-gradient(180deg,#4a443c 0%,#2e2a25 100%);
+         border-radius:${U*0.35}px;
+         box-shadow:0 12px 28px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.1), inset 0 -2px 0 rgba(0,0,0,.3);
          border:1px solid #1a1712;
-         max-height:60vh;overflow:auto;
+         max-height:70vh;overflow:auto;
          display:inline-block;max-width:100%">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:0 ${U*0.3}px ${U*0.4}px;font-family:'Consolas',monospace;font-size:${Math.max(8, U*0.24)}px;color:#8a827a;letter-spacing:2px">
+        <span>DORORONG ${N}</span>
+        <span style="display:inline-flex;gap:6px;align-items:center">
+          <span style="width:6px;height:6px;border-radius:50%;background:#3fff88;box-shadow:0 0 6px #3fff88"></span>
+          <span style="width:6px;height:6px;border-radius:50%;background:#555"></span>
+          <span style="width:6px;height:6px;border-radius:50%;background:#555"></span>
+        </span>
+      </div>
       ${rowsHtml}
     </div>
-    <div id="keycapHint" style="margin-top:10px;font-size:13px;color:var(--muted)">LED 스윕 중…</div>`;
+    <div id="keycapHint" style="margin-top:10px;font-size:13px;color:var(--muted);text-align:center">LED 스윕 중…</div>`;
 
   // 스크롤 래퍼
   const kbBody = document.getElementById("kbBody");
   kbBody.parentElement.style.textAlign = "center";
 
-  const caps = Array.from(document.querySelectorAll(".keycap"));
+  // 참가자 키만 선택 (모디파이어/스페이스 제외)
+  const caps = Array.from(document.querySelectorAll(".keycap[data-i]"));
+  // data-i 순서대로 정렬하여 winIdx가 올바르게 매핑되도록
+  caps.sort((a,b) => parseInt(a.dataset.i) - parseInt(b.dataset.i));
   const tops = caps.map(c => c.querySelector(".kcap-top"));
 
   // 조명 스윕: 처음엔 빠르게, 점점 느려지며 당첨 키캡에서 정지
@@ -1539,15 +1612,18 @@ function keycapAnim(picked, pool, seed) {
 
   function resetKey(i) {
     const c = caps[i], t = tops[i];
+    if (!c) return;
     c.style.transform = "";
-    c.style.background = "linear-gradient(180deg,#3a3631 0%,#2a2621 100%)";
-    t.style.background = "linear-gradient(180deg,#5a544c 0%,#4a443c 60%,#3a342c 100%)";
+    c.style.background = "linear-gradient(180deg,#2e2a25 0%,#1f1b17 100%)";
+    c.style.boxShadow = "";
+    t.style.background = "linear-gradient(180deg,#4a433a 0%,#3a342c 55%,#2a251f 100%)";
     t.style.color = "#e8e3d3";
     t.style.textShadow = "";
   }
   function highlightKey(i, strong) {
     const c = caps[i], t = tops[i];
-    c.style.transform = strong ? "translateY(-6px) scale(1.12)" : "translateY(-2px)";
+    if (!c) return;
+    c.style.transform = strong ? "translateY(-6px) scale(1.15)" : "translateY(-2px)";
     c.style.background = "linear-gradient(180deg,#ffd66b 0%,#c89a2a 100%)";
     t.style.background = strong
       ? "linear-gradient(180deg,#fff6d6 0%,#ffd66b 60%,#c89a2a 100%)"
@@ -1600,90 +1676,273 @@ function horseAnim(picked, pool, seed) {
   let racers = pool.slice().sort(()=>Math.random()-0.5);
   const winIdx = racers.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
   const N = racers.length;
-  // 주자 수에 따라 레인 높이 자동 조정 (적으면 넉넉하게, 많으면 촘촘하게, 최소 18px)
-  const laneH = Math.max(18, Math.min(56, Math.floor(480 / N)));
-  const W = 460, H = laneH*N + 30;
+
+  // 큰 캔버스 — 원형(타원) 경기장
+  const W = 780, H = 560;
+  const cx = W/2, cy = H/2;
+  const outerRx = 340, outerRy = 220;
+  // 레인 간격 (인원에 따라 자동)
+  const laneGap = Math.max(6, Math.min(20, Math.floor(140 / Math.max(N,1))));
+  const innerBuffer = 30; // 가장 안쪽 레인 안쪽의 잔디 여백
+  const horseFont = Math.max(14, Math.min(26, Math.floor(laneGap * 1.4)));
+  const nameFont = Math.max(9, Math.min(13, laneGap));
 
   $("resultBody").innerHTML = `
-    <div style="font-size:13px;color:#888;margin-bottom:10px">🐎 경마 — 결승선까지</div>
-    <div id="horseWrap" style="position:relative;background:linear-gradient(180deg,#a8d5a0,#7cb373);border-radius:12px;padding:10px;max-height:60vh;overflow:auto">
-      <canvas id="horseC" width="${W}" height="${H}" style="max-width:100%;display:block"></canvas>
+    <div style="font-size:13px;color:#888;margin-bottom:6px">🐎 경마 — 2바퀴 레이스</div>
+    <div id="horseWrap" style="position:relative;background:#0a2e1a;border-radius:14px;padding:8px;overflow:hidden;
+         box-shadow:inset 0 0 40px rgba(0,0,0,.5)">
+      <canvas id="horseC" width="${W}" height="${H}" style="max-width:100%;display:block;border-radius:10px"></canvas>
+      <div id="horseFlash" style="position:absolute;inset:0;pointer-events:none;background:rgba(255,255,255,0);transition:background .15s"></div>
     </div>
-    <div id="horseHint" style="margin-top:10px;font-size:13px;color:var(--muted);text-align:center">출발!</div>`;
+    <div id="horseBoard" style="margin-top:8px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px">
+      <div id="horseLap" style="color:var(--ink);font-weight:800;font-family:ui-monospace,monospace">LAP 1 / 2</div>
+      <div id="horseLead" style="color:var(--accent);font-weight:700;font-family:ui-monospace,monospace">선두: —</div>
+      <div id="horseTime" style="color:var(--muted);font-family:ui-monospace,monospace">00.00s</div>
+    </div>
+    <div id="horseHint" style="margin-top:6px;font-size:13px;color:var(--muted);text-align:center">출발 준비 중…</div>`;
 
   const cv = document.getElementById("horseC"), ctx = cv.getContext("2d");
-  const startX = 70, finishX = W - 50;
-  const horseFont = Math.max(18, Math.floor(laneH * 0.55));
-  const nameFont = Math.max(9, Math.floor(laneH * 0.22));
-  const emojis = ["🐎","🐴","🦄","🐎","🐴","🦓","🐎","🐴"];
+  const flashEl = document.getElementById("horseFlash");
+  const emojis = ["🐎","🐴","🦄"];
 
-  // 각 주자에게 progress [0,1] — 당첨자가 마지막에 1.0 도달하도록 시간 예산 분배
-  const racerState = racers.map((r, i) => ({
-    r, i, p: 0,
-    baseSpeed: 0.0018 + Math.random() * 0.0007, // px per ms ratio
-    jitter: 0,
-  }));
-  // 목표: 당첨자가 3.2~3.8초 사이에 도착, 나머지는 그 이후
-  const duration = 3400;
-  const start = performance.now();
+  const TOTAL_LAPS = 2;
+  const duration = 13000; // 긴장감 있게 13초
+  const winnerFinish = duration;
+
+  // 각 주자의 개별 종료 시각: 당첨자가 가장 빠름
+  const racerState = racers.map((r, i) => {
+    // 당첨자는 duration, 나머지는 duration + spread
+    // 나머지 간에도 섞이기 위해 스프레드 넓게
+    const extra = i === winIdx ? 0 : (180 + Math.random() * 2400);
+    return {
+      r, i,
+      finish: duration + extra,
+      progress: 0,
+      laneR: outerRx - 18 - i * laneGap, // 레인 x 반경
+      laneRy: outerRy - 18 - i * laneGap, // 레인 y 반경
+      // 각 레이스 페이스 변동 (3단계 코사인 합성)
+      phase: Math.random() * Math.PI * 2,
+      freq: 0.0009 + Math.random() * 0.0008,
+      amp: 0.08 + Math.random() * 0.06,
+      finishedAt: null,
+    };
+  });
+
+  // 시작 시점 (카운트다운 종료 후 재설정)
+  let start = performance.now();
+  const BASE_ANGLE = Math.PI / 2; // 출발선 = 아래쪽 (6시 방향). 반시계로 달림.
+
+  function progressAtTime(rs, t) {
+    // 0..TOTAL_LAPS 범위. 기본은 t/finish * TOTAL_LAPS (선형),
+    // smoothstep-ish easing for 드라마틱 시작/끝 + 페이스 변동
+    const raw = Math.min(1, t / rs.finish);
+    // 약간 ease: 초반 빠른 출발 → 중반 유지 → 종반 스퍼트 느낌
+    const eased = 0.5 - Math.cos(raw * Math.PI) * 0.5;
+    // 페이스 노이즈 (종반부에는 사라져서 결과 순서 보존)
+    const swing = Math.sin(t * rs.freq + rs.phase) * rs.amp * (1 - raw) * (1 - raw);
+    let p = eased * TOTAL_LAPS + swing;
+    // 다른 주자가 당첨자보다 앞서지 않도록 clamp: 당첨자 progress - tiny
+    // (뒷 처리에서 일괄 검사)
+    return Math.max(0, Math.min(TOTAL_LAPS, p));
+  }
+
+  function posAt(rs, progress) {
+    // progress in [0, TOTAL_LAPS]; 한 바퀴 = 2π. 반시계 → 각도 감소
+    const ang = BASE_ANGLE - (progress * Math.PI * 2);
+    return {
+      x: cx + Math.cos(ang) * rs.laneR,
+      y: cy + Math.sin(ang) * rs.laneRy,
+      a: ang,
+    };
+  }
+
+  function drawTrack() {
+    // 전체 잔디
+    const grd = ctx.createRadialGradient(cx, cy, 40, cx, cy, Math.max(W,H)/2);
+    grd.addColorStop(0, "#2c6a3a");
+    grd.addColorStop(1, "#12391f");
+    ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
+
+    // 트랙 전체(흙) — 외부 타원
+    ctx.fillStyle = "#c9a06a";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, outerRx, outerRy, 0, 0, Math.PI*2);
+    ctx.fill();
+    // 안쪽 잔디 (가장 안쪽 레인 안쪽)
+    const innermostRx = Math.max(40, outerRx - 18 - (N-1)*laneGap - laneGap);
+    const innermostRy = Math.max(20, outerRy - 18 - (N-1)*laneGap - laneGap);
+    ctx.fillStyle = "#3e8a4e";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, innermostRx, innermostRy, 0, 0, Math.PI*2);
+    ctx.fill();
+    // 안쪽 잔디 패턴 (광장)
+    ctx.strokeStyle = "rgba(255,255,255,.08)";
+    ctx.lineWidth = 1;
+    for (let k=0; k<innermostRy; k+=12) {
+      ctx.beginPath();
+      ctx.moveTo(cx - innermostRx*0.9, cy - innermostRy + k);
+      ctx.lineTo(cx + innermostRx*0.9, cy - innermostRy + k);
+      ctx.stroke();
+    }
+
+    // 레인 구분선 (흰 점선 타원)
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,.25)";
+    ctx.setLineDash([5,6]);
+    ctx.lineWidth = 1;
+    for (let i=0; i<=N; i++) {
+      const rx = outerRx - 8 - i * laneGap;
+      const ry = outerRy - 8 - i * laneGap;
+      if (rx < 30 || ry < 15) break;
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.restore();
+
+    // 출발/결승선 (아래쪽, 6시 방향에서 수직)
+    ctx.save();
+    const fx = cx;
+    const fyOuter = cy + outerRy - 4;
+    const fyInner = cy + (outerRy - laneGap*N - 18);
+    // 체커 패턴
+    for (let y = fyInner; y < fyOuter; y += 8) {
+      ctx.fillStyle = ((y/8)|0) % 2 === 0 ? "#fff" : "#222";
+      ctx.fillRect(fx - 3, y, 6, 8);
+    }
+    // FINISH 텍스트
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 11px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText("FINISH", fx, fyOuter + 16);
+    ctx.restore();
+  }
+
+  function drawHorse(rs, isLeader, isWinner, done) {
+    const pos = posAt(rs, rs.progress);
+    // 바운스 + 트랙 접선방향 살짝 기울이기
+    const dt = performance.now() - start;
+    const bob = Math.sin(dt * 0.02 + rs.i) * 2;
+    // 말 이모지
+    ctx.save();
+    ctx.translate(pos.x, pos.y + bob);
+    // 반시계 방향으로 달리므로 이모지가 진행방향 보도록 flip (아래 반원에서는 오른쪽, 위 반원에서는 왼쪽)
+    // 진행 방향 벡터: d/da (Rx cos, Ry sin) = (-Rx sin, Ry cos). 반시계(각도 감소)므로 반대.
+    const tx = Math.sin(pos.a) * rs.laneR;
+    const flip = tx > 0 ? 1 : -1;
+    ctx.scale(flip, 1);
+    ctx.font = horseFont + "px serif";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    if (done) ctx.globalAlpha = 0.45;
+    ctx.fillText(emojis[rs.i % emojis.length], 0, 0);
+    ctx.restore();
+
+    // 이름표 (작게, 말 위)
+    ctx.save();
+    ctx.translate(pos.x, pos.y + bob);
+    ctx.font = `bold ${nameFont}px system-ui`;
+    ctx.textAlign = "center";
+    ctx.fillStyle = isWinner ? "#ffd66b" : (isLeader ? "#fff" : "rgba(255,255,255,.85)");
+    ctx.strokeStyle = "rgba(0,0,0,.75)";
+    ctx.lineWidth = 3;
+    const label = `${rs.i+1}.${(rs.r.name||"").slice(0,8)}`;
+    ctx.strokeText(label, 0, -horseFont*0.65);
+    ctx.fillText(label, 0, -horseFont*0.65);
+    ctx.restore();
+  }
+
+  let winnerDone = false;
+  let finishedCount = 0;
+  const results = [];
 
   function frame(now) {
     const dt = now - start;
-    ctx.clearRect(0,0,W,H);
-    // 트랙 라인
-    for (let k=0;k<N;k++) {
-      const y = 20 + k * laneH;
-      ctx.fillStyle = "rgba(255,255,255,.25)";
-      ctx.fillRect(0, y+laneH-4, W, 1);
-    }
-    // 결승선
-    ctx.fillStyle = "#fff";
-    for (let k=0;k<H;k+=10) { ctx.fillRect(finishX, k, 4, 5); ctx.fillRect(finishX+4, k+5, 4, 5); }
 
-    let winnerDone = false;
+    // progress 업데이트 + 당첨자 독주 보장 (다른 주자가 당첨자보다 앞서지 않도록 clamp)
+    const winP = progressAtTime(racerState[winIdx], dt);
+    racerState[winIdx].progress = winP;
     racerState.forEach(rs => {
-      // 당첨자: dt/duration을 그대로. 다른애들: 자기 baseSpeed
-      let targetP;
-      if (rs.i === winIdx) {
-        targetP = Math.min(1, (dt / duration));
-      } else {
-        // 다른 애들은 당첨자보다 살짝 느리게 수렴
-        const own = Math.min(0.97, dt * rs.baseSpeed);
-        targetP = own;
-      }
-      rs.p = targetP;
-      const x = startX + (finishX - startX - 20) * rs.p;
-      const y = 20 + rs.i * laneH;
-      // 말 이모지 (위아래 살짝 바운스)
-      const bob = Math.sin(dt * 0.02 + rs.i) * Math.min(3, laneH*0.08);
-      ctx.font = horseFont + "px serif";
-      ctx.textBaseline = "middle";
-      ctx.fillText(emojis[rs.i % emojis.length], x, y + laneH/2 + bob);
-      // 이름 레이블
-      ctx.font = `bold ${nameFont}px system-ui`;
-      ctx.fillStyle = rs.i === winIdx ? "#5b3a00" : "#1d3a1a";
-      ctx.textAlign = "left";
-      const name = (rs.r.name||"").slice(0,10);
-      ctx.fillText(`${rs.i+1}. ${name}`, 6, y + nameFont + 1);
-      if (rs.i === winIdx && rs.p >= 1) winnerDone = true;
+      if (rs.i === winIdx) return;
+      let p = progressAtTime(rs, dt);
+      // 당첨자의 progress보다 약간 뒤쪽으로 clamp (최소 0.005 차이)
+      if (p >= winP - 0.002) p = winP - 0.002 - Math.random() * 0.015;
+      rs.progress = Math.max(0, p);
     });
 
-    // 당첨자 레인이 화면 가운데 오도록 자동 스크롤
-    const wrap = document.getElementById("horseWrap");
-    if (wrap) {
-      const winY = 20 + winIdx * laneH + laneH/2;
-      const desired = Math.max(0, winY - wrap.clientHeight/2);
-      wrap.scrollTop += (desired - wrap.scrollTop) * 0.08;
+    // 완주 감지
+    racerState.forEach(rs => {
+      if (!rs.finishedAt && rs.progress >= TOTAL_LAPS - 0.005) {
+        rs.finishedAt = dt;
+        results.push(rs);
+        finishedCount++;
+        if (rs.i === winIdx) {
+          winnerDone = true;
+          flashEl.style.background = "rgba(255,214,107,.45)";
+          setTimeout(() => flashEl.style.background = "rgba(255,255,255,0)", 200);
+        }
+      }
+    });
+
+    drawTrack();
+
+    // 주자 그리기: 뒤쪽(레인 바깥)부터 → 당첨자 맨 위로 오도록
+    const order = racerState.slice().sort((a,b) => a.laneR - b.laneR);
+    // 선두 판정 (진행도 최고)
+    const leader = racerState.slice().sort((a,b) => b.progress - a.progress)[0];
+    order.forEach(rs => {
+      drawHorse(rs, rs === leader, rs.i === winIdx, !!rs.finishedAt);
+    });
+
+    // 보드 업데이트
+    const lap = Math.min(TOTAL_LAPS, Math.floor(winP) + 1);
+    document.getElementById("horseLap").textContent = `LAP ${lap} / ${TOTAL_LAPS}`;
+    document.getElementById("horseLead").textContent = `선두: ${(leader.r.name||"").slice(0,12)}`;
+    document.getElementById("horseTime").textContent = (dt/1000).toFixed(2) + "s";
+
+    // 종반 긴장감: 당첨자가 마지막 10% 진입 시 화면 살짝 톤다운
+    if (winP > TOTAL_LAPS * 0.9 && !winnerDone) {
+      ctx.fillStyle = "rgba(0,0,0,.12)";
+      ctx.fillRect(0,0,W,H);
+      $("horseHint").innerHTML = `🔥 <b>막판 스퍼트!</b> 선두 ${esc((leader.r.name||"").slice(0,12))}`;
+    } else if (!winnerDone) {
+      if (winP < 0.3) $("horseHint").textContent = "🏁 출발!";
+      else if (winP < TOTAL_LAPS - 1) $("horseHint").textContent = "🐎 중반전...";
+      else $("horseHint").innerHTML = `🔥 마지막 바퀴 — 선두 <b>${esc((leader.r.name||"").slice(0,12))}</b>`;
     }
 
-    if (!winnerDone && dt < duration + 50) {
+    if (!winnerDone) {
       requestAnimationFrame(frame);
     } else {
-      $("horseHint").innerHTML = `🏆 <b>${esc(winner.name)}</b> 우승!`;
-      setTimeout(() => renderResult(picked), 1100);
+      // 당첨자 우승 연출: 당첨자 말 주위 금색 링
+      const w = racerState[winIdx];
+      const pos = posAt(w, Math.min(TOTAL_LAPS, w.progress));
+      ctx.save();
+      ctx.strokeStyle = "#ffd66b";
+      ctx.lineWidth = 4;
+      ctx.shadowBlur = 20; ctx.shadowColor = "#ffd66b";
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, horseFont*0.9, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+      $("horseHint").innerHTML = `🏆 <b>${esc(winner.name)}</b> 우승! (${(dt/1000).toFixed(2)}s)`;
+      setTimeout(() => renderResult(picked), 1500);
     }
   }
-  requestAnimationFrame(frame);
+  // 출발 카운트다운 (3, 2, 1, GO!)
+  let count = 3;
+  const cd = setInterval(() => {
+    drawTrack();
+    ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = count === 0 ? "#ffd66b" : "#fff";
+    ctx.font = "bold 120px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(count > 0 ? String(count) : "GO!", cx, cy);
+    if (count < 0) {
+      clearInterval(cd);
+      flashEl.style.background = "rgba(255,255,255,.4)";
+      setTimeout(() => flashEl.style.background = "rgba(255,255,255,0)", 150);
+      start = performance.now(); // 실제 레이스 시작 시점
+      requestAnimationFrame(frame);
+      return;
+    }
+    count--;
+  }, 700);
 }
 
 // ── 활쏘기 (인터랙티브) ────────────────────────────
