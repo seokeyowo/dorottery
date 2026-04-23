@@ -183,7 +183,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.7.0</div>
+  <div class="ver">v1.8.0</div>
 </header>
 
 <div class="layout">
@@ -612,9 +612,9 @@ function getPool(wantStages) {
   });
   stages.afterKeyword = s2.length;
 
-  // ③ 글댓합 필터
+  // ③ 글댓합 필터 — 체크박스 또는 컷트라인>0 이면 적용
   let s3 = s2;
-  if (useSum) {
+  if ((useSum || minSum > 0) && minSum > 0) {
     s3 = s2.filter(c => {
       const p = state.profiles[c.userId];
       if (!p) return true;
@@ -666,7 +666,7 @@ function refreshPool() {
   }).join("");
 }
 
-["includeKw","excludeKw","excludeFloating","excludeDccon","dedup","usePostCommentSum","winnerCount"].forEach(id => {
+["includeKw","excludeKw","excludeFloating","excludeDccon","dedup","usePostCommentSum","minSum","winnerCount"].forEach(id => {
   const el = $(id);
   el.addEventListener(el.type === "checkbox" ? "change" : "input", refreshPool);
 });
@@ -674,6 +674,15 @@ function refreshPool() {
 $("usePostCommentSum").addEventListener("change", async () => {
   refreshPool();
   if ($("usePostCommentSum").checked && state.comments.length) {
+    await autoLoadProfiles();
+  }
+});
+
+// 컷트라인 값이 0보다 크면 프로필 자동 로드
+$("minSum").addEventListener("change", async () => {
+  refreshPool();
+  const v = parseInt($("minSum").value) || 0;
+  if (v > 0 && state.comments.length) {
     await autoLoadProfiles();
   }
 });
@@ -1099,11 +1108,28 @@ function cardAnim(picked, pool, seed) { renderCardResult(picked); }
 
 // ── 배틀로얄 ─────────────────────────────────────
 function battleAnim(picked, pool, seed) {
-  const W = 480, H = 420;
+  // 캐릭터 이미지 여러 장 로드 (프리로드 공유)
+  if (!window.__battleCharImgs) {
+    const sources = [
+      "battle-char.gif",
+      "battle-char-1.gif",
+      "battle-char-2.gif",
+      "battle-char-3.gif",
+      "battle-char-4.webp",
+      "battle-char-5.jpg",
+    ];
+    window.__battleCharImgs = sources.map(s => { const i = new Image(); i.src = s; return i; });
+  }
+  const charImgs = window.__battleCharImgs;
+  const pickImg = (idx) => charImgs[idx % charImgs.length];
+
+  const W = 620, H = 520;
   const target = picked[0];
   // 풀 전원 참가 (제한 없음)
   const participants = pool.slice().sort(()=>Math.random()-0.5);
   const N = participants.length;
+  // 캐릭터 크기 인원에 따라 자동 조정
+  const spriteSize = Math.max(22, Math.min(56, Math.floor(Math.sqrt((W*H*0.55)/Math.max(N,1)))));
 
   $("resultBody").innerHTML = `
     <div style="font-size:13px;color:#888;margin-bottom:10px">⚔️ 배틀로얄 — 생존 경쟁</div>
@@ -1122,19 +1148,43 @@ function battleAnim(picked, pool, seed) {
   const flash = document.getElementById("battleFlash");
   const zoom = document.getElementById("battleZoom");
 
-  // 초기 배치: 원형으로 분산
+  // 초기 배치: 화면 전체에 무작위 분산
   const fighters = participants.map((c, i) => {
     const a = (i / N) * Math.PI * 2;
+    const r = 120 + Math.random() * 120;
     return {
       c, alive: true,
-      x: W/2 + Math.cos(a) * 140,
-      y: H/2 + Math.sin(a) * 140,
-      vx: (Math.random()-0.5) * 2,
-      vy: (Math.random()-0.5) * 2,
+      img: pickImg(Math.floor(Math.random() * charImgs.length)),
+      x: W/2 + Math.cos(a) * r,
+      y: H/2 + Math.sin(a) * r,
+      vx: (Math.random()-0.5) * 2.4,
+      vy: (Math.random()-0.5) * 2.4,
       hp: 100,
       flashFrames: 0,
+      // 공격 상태
+      attackTarget: null,   // 돌진 대상 (fighter 참조)
+      attackFrames: 0,      // 돌진 지속 프레임
+      flipX: Math.random() < 0.5,
     };
   });
+
+  // 파티클 (타격 이펙트)
+  const particles = [];
+  const spark = (x, y, color = "#ffd66b") => {
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2, s = 2 + Math.random() * 4;
+      particles.push({
+        x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+        life: 20 + Math.random()*10, age: 0, color,
+        size: 2 + Math.random()*3,
+      });
+    }
+  };
+  // 공중에 뜨는 데미지 숫자
+  const hitTexts = [];
+  const popText = (x, y, text, color="#ff6b6b") => {
+    hitTexts.push({ x, y, text, color, age: 0, life: 30 });
+  };
 
   const log = [];
   const addLog = (s) => {
@@ -1153,7 +1203,8 @@ function battleAnim(picked, pool, seed) {
   };
 
   let frames = 0;
-  const killInterval = 45; // 대략 0.75초마다 한 명 처치
+  // 인원 많으면 킬 주기 단축 — 너무 오래 걸리지 않도록
+  const killInterval = Math.max(10, Math.min(45, Math.floor(3600 / Math.max(N, 1))));
   let finaleStarted = false;
   let finaleAt = 0;
 
@@ -1198,86 +1249,130 @@ function battleAnim(picked, pool, seed) {
     if (!f.alive) return;
     const hitFlash = f.flashFrames > 0;
     if (hitFlash) f.flashFrames--;
-    const body = hitFlash ? "#ff6b6b" : (isTarget ? "#ffd66b" : "#d9d9d9");
-    const shirt = hitFlash ? "rgba(255,107,107,.35)" : (isTarget ? "rgba(255,214,107,.24)" : "rgba(255,255,255,.12)");
-    const skin = hitFlash ? "#7a3a3a" : "#efe2d4";
-    const facing = Math.sin((frames + f.x + f.y) * 0.04);
-    const armSwing = Math.sin((frames + f.x) * 0.12) * 0.4;
-    const legSwing = Math.cos((frames + f.y) * 0.12) * 0.35;
-    const weaponAngle = facing * 0.55 - 0.35;
+    const SZ = spriteSize;
+    // 점프/돌진 오프셋
+    const attacking = f.attackFrames > 0;
+    if (attacking) f.attackFrames--;
+    const bounce = Math.sin(frames * 0.18 + f.x) * 1.2;
+    const lunge = attacking ? Math.sin((1 - f.attackFrames/8) * Math.PI) * 8 : 0;
 
-    // shadow
-    ctx.fillStyle = "rgba(0,0,0,.25)";
+    // 돌진 방향 기준 flip
+    let flip = f.flipX ? -1 : 1;
+    if (f.attackTarget) flip = f.attackTarget.x > f.x ? 1 : -1;
+
+    // 그림자
+    ctx.fillStyle = "rgba(0,0,0,.35)";
     ctx.beginPath();
-    ctx.ellipse(f.x, f.y + 24, 12, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(f.x, f.y + SZ/2 - 2, SZ/2.2, SZ/7, 0, 0, Math.PI*2);
     ctx.fill();
 
-    // weapon
-    drawKeyboard(f.x + facing * 7, f.y - 2, weaponAngle, 0.9 + (hitFlash ? 0.08 : 0), isTarget);
+    // 공격 중: 속도선
+    if (attacking && f.attackTarget) {
+      ctx.strokeStyle = "rgba(255,255,255,.4)";
+      ctx.lineWidth = 2;
+      const dx = f.attackTarget.x - f.x, dy = f.attackTarget.y - f.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const ux = dx/d, uy = dy/d;
+      for (let k=0; k<3; k++) {
+        ctx.beginPath();
+        ctx.moveTo(f.x - ux * (10 + k*5), f.y - uy * (10 + k*5) - 4 + k*3);
+        ctx.lineTo(f.x - ux * (18 + k*5), f.y - uy * (18 + k*5) - 4 + k*3);
+        ctx.stroke();
+      }
+    }
 
-    // legs
-    ctx.strokeStyle = body;
-    ctx.lineWidth = 3.2;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(f.x, f.y + 8);
-    ctx.lineTo(f.x - 7 + legSwing * 3, f.y + 20);
-    ctx.moveTo(f.x, f.y + 8);
-    ctx.lineTo(f.x + 7 - legSwing * 3, f.y + 20);
-    ctx.stroke();
+    // 이미지
+    ctx.save();
+    ctx.translate(f.x + (f.attackTarget ? Math.sign(f.attackTarget.x-f.x)*lunge : 0), f.y + bounce - lunge*0.3);
+    ctx.scale(flip, 1);
+    if (hitFlash) {
+      // 피격 틴트
+      ctx.filter = "brightness(1.3) hue-rotate(-20deg) saturate(1.8)";
+    }
+    if (isTarget) {
+      ctx.filter = (ctx.filter && ctx.filter !== "none" ? ctx.filter + " " : "") + "drop-shadow(0 0 6px #ffd66b)";
+    }
+    // 이미지가 로드되지 않았으면 플레이스홀더 원
+    const myImg = f.img || charImgs[0];
+    if (myImg.complete && myImg.naturalWidth > 0) {
+      ctx.drawImage(myImg, -SZ/2, -SZ/2, SZ, SZ);
+    } else {
+      ctx.fillStyle = isTarget ? "#ffd66b" : "#fbb";
+      ctx.beginPath(); ctx.arc(0, 0, SZ/2.5, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
 
-    // torso
-    ctx.fillStyle = shirt;
-    ctx.strokeStyle = body;
-    ctx.lineWidth = 2;
-    roundRect(f.x - 8, f.y - 8, 16, 20, 7);
-    ctx.fill();
-    ctx.stroke();
+    // HP bar (적으면 표시)
+    if (N <= 80 && f.hp < 100) {
+      const bw = SZ * 0.8, bh = 3;
+      ctx.fillStyle = "rgba(0,0,0,.6)";
+      ctx.fillRect(f.x - bw/2, f.y - SZ/2 - 8, bw, bh);
+      ctx.fillStyle = f.hp > 50 ? "#6ade8a" : (f.hp > 20 ? "#ffcc66" : "#ff6b6b");
+      ctx.fillRect(f.x - bw/2, f.y - SZ/2 - 8, bw * (f.hp/100), bh);
+    }
 
-    // head
-    ctx.fillStyle = skin;
-    ctx.strokeStyle = body;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(f.x, f.y - 18, 8.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    // face highlight
-    ctx.fillStyle = hitFlash ? "#ff8a8a" : "rgba(255,255,255,.22)";
-    ctx.beginPath();
-    ctx.arc(f.x - 2.6, f.y - 20, 1.6, 0, Math.PI * 2);
-    ctx.fill();
-
-    // arms holding keyboard
-    ctx.strokeStyle = body;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(f.x - 7, f.y - 2);
-    ctx.lineTo(f.x - 13 + armSwing * 4, f.y + 4);
-    ctx.moveTo(f.x + 7, f.y - 2);
-    ctx.lineTo(f.x + 14 - armSwing * 4, f.y + 3);
-    ctx.stroke();
-
-    // name
-    ctx.fillStyle = hitFlash ? "#ff5050" : (isTarget ? "#ffd66b" : "#ccc");
-    ctx.font = `${isTarget ? "bold " : ""}10px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText(esc(f.c.name).slice(0,8), f.x, f.y - 30);
+    // 이름
+    if (N <= 150) {
+      ctx.fillStyle = hitFlash ? "#ff5050" : (isTarget ? "#ffd66b" : "rgba(255,255,255,.85)");
+      ctx.strokeStyle = "rgba(0,0,0,.85)";
+      ctx.lineWidth = 2.5;
+      ctx.font = `${isTarget ? "bold " : ""}${Math.max(9, SZ*0.28)}px sans-serif`;
+      ctx.textAlign = "center";
+      const label = esc(f.c.name).slice(0, 8);
+      ctx.strokeText(label, f.x, f.y - SZ/2 - 12);
+      ctx.fillText(label, f.x, f.y - SZ/2 - 12);
+    }
   };
 
   const step = () => {
     frames++;
-    // 물리
+    // 물리 — 공격 중인 파이터는 타겟 쪽으로 끌려간다
     for (const f of fighters) {
       if (!f.alive) continue;
+      if (f.attackTarget && f.attackTarget.alive && f.attackFrames > 0) {
+        const dx = f.attackTarget.x - f.x, dy = f.attackTarget.y - f.y;
+        const d = Math.hypot(dx, dy) || 1;
+        f.vx += (dx/d) * 0.9;
+        f.vy += (dy/d) * 0.9;
+      }
       f.x += f.vx; f.y += f.vy;
-      f.vx *= 0.97; f.vy *= 0.97;
-      if (Math.abs(f.vx) < 0.3) f.vx += (Math.random()-0.5) * 1.5;
-      if (Math.abs(f.vy) < 0.3) f.vy += (Math.random()-0.5) * 1.5;
+      f.vx *= 0.94; f.vy *= 0.94;
+      if (!f.attackTarget) {
+        if (Math.abs(f.vx) < 0.3) f.vx += (Math.random()-0.5) * 1.5;
+        if (Math.abs(f.vy) < 0.3) f.vy += (Math.random()-0.5) * 1.5;
+      }
       if (f.x < 20) { f.x = 20; f.vx = Math.abs(f.vx); }
       if (f.x > W-20) { f.x = W-20; f.vx = -Math.abs(f.vx); }
       if (f.y < 30) { f.y = 30; f.vy = Math.abs(f.vy); }
       if (f.y > H-30) { f.y = H-30; f.vy = -Math.abs(f.vy); }
+
+      // 공격 프레임 종료 시점: 접촉 판정 — 데미지
+      if (f.attackFrames === 1 && f.attackTarget && f.attackTarget.alive) {
+        const t = f.attackTarget;
+        const dmg = 18 + Math.floor(Math.random()*18);
+        // 타겟 캐릭터는 무적(winner 보호)
+        if (t.c !== target) {
+          t.hp -= dmg;
+          t.flashFrames = 14;
+          const hx = (f.x + t.x)/2, hy = (f.y + t.y)/2;
+          spark(hx, hy, "#ffd66b");
+          popText(hx, hy - 6, `-${dmg}`, "#ff6b6b");
+          if (t.hp <= 0) {
+            t.alive = false;
+            spark(t.x, t.y, "#ff9060");
+            spark(t.x, t.y, "#ffd66b");
+            popText(t.x, t.y - 10, "K.O.", "#ffd66b");
+            pulse();
+            const aliveLeft = fighters.filter(x=>x.alive).length;
+            addLog(`💥 ${esc(f.c.name).slice(0,10)} → ${esc(t.c.name).slice(0,10)} K.O.! 생존 ${aliveLeft}명`);
+          }
+        } else {
+          // 타겟 공격은 빗나감
+          const hx = (f.x + t.x)/2, hy = (f.y + t.y)/2;
+          popText(hx, hy - 6, "MISS", "#aaa");
+        }
+      }
+      if (f.attackFrames <= 0) f.attackTarget = null;
     }
 
     // 캔버스
@@ -1293,26 +1388,82 @@ function battleAnim(picked, pool, seed) {
     const scale = Math.min(1.18, 0.92 + (participants.length - crowd) / Math.max(participants.length,1) * 0.32);
     shell.style.transform = `scale(${scale})`;
     // 파이터
-    for (const f of fighters) drawFighter(f, false);
+    for (const f of fighters) {
+      const isTgt = f.alive && f.c === target && alive.length <= 3;
+      drawFighter(f, isTgt);
+    }
 
-    // 주기적으로 한 명 처치 (타겟은 살려두기)
-    if (frames % killInterval === 0) {
-      const aliveCount = alive.length;
-      if (aliveCount > 1) {
-        // 타겟이 아닌 파이터 중 랜덤 선택해 처치
-        const victims = alive.filter(f => f.c !== target);
-        if (victims.length > 0) {
-          const victim = victims[Math.floor(Math.random() * victims.length)];
-          // 가해자: 가장 가까운 생존자
-          const dists = alive.filter(f => f !== victim)
-            .map(f => ({f, d: Math.hypot(f.x-victim.x, f.y-victim.y)}))
-            .sort((a,b) => a.d-b.d);
-          const killer = dists[0].f;
-          victim.alive = false;
-          killer.flashFrames = 20;
-          pulse();
-          addLog(`💥 ${esc(killer.c.name).slice(0,10)} vs ${esc(victim.c.name).slice(0,10)} 충돌! 생존 ${aliveCount-1}명`);
+    // 파티클 업데이트/렌더
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.age++;
+      if (p.age >= p.life) { particles.splice(i,1); continue; }
+      const a = 1 - p.age/p.life;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * a, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    // 데미지 숫자
+    for (let i = hitTexts.length - 1; i >= 0; i--) {
+      const t = hitTexts[i];
+      t.y -= 1.2; t.age++;
+      if (t.age >= t.life) { hitTexts.splice(i,1); continue; }
+      const a = 1 - t.age/t.life;
+      ctx.globalAlpha = a;
+      ctx.font = "bold 14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.strokeStyle = "rgba(0,0,0,.85)";
+      ctx.lineWidth = 3;
+      ctx.strokeText(t.text, t.x, t.y);
+      ctx.fillStyle = t.color;
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+
+    // 주기적으로 전투 트리거: 가까운 짝끼리 돌진
+    const attackInterval = Math.max(4, Math.floor(killInterval / 3));
+    if (frames % attackInterval === 0 && alive.length > 1) {
+      // 무작위 공격자 선정
+      const attackers = alive.filter(f => !f.attackTarget);
+      if (attackers.length > 0) {
+        const numPairs = Math.min(Math.ceil(alive.length / 12), Math.floor(attackers.length/2)) || 1;
+        for (let k = 0; k < numPairs; k++) {
+          const atk = attackers[Math.floor(Math.random()*attackers.length)];
+          if (!atk || atk.attackTarget) continue;
+          // 가장 가까운 다른 생존자 찾기
+          let best = null, bd = Infinity;
+          for (const other of alive) {
+            if (other === atk || !other.alive) continue;
+            const d = Math.hypot(other.x-atk.x, other.y-atk.y);
+            if (d < bd) { bd = d; best = other; }
+          }
+          if (best) {
+            atk.attackTarget = best;
+            atk.attackFrames = 8;
+            // 상호 돌진 (타겟도 반격 모션)
+            if (!best.attackTarget && Math.random() < 0.6) {
+              best.attackTarget = atk;
+              best.attackFrames = 8;
+            }
+          }
         }
+      }
+    }
+
+    // 강제 마무리: 생존자가 2명 이하면 타겟이 아닌 자 즉시 K.O.
+    if (frames % killInterval === 0 && alive.length > 1) {
+      // 안전장치: 너무 오래 지속되지 않도록 가장 HP 낮은 비-타겟을 처치
+      const victims = alive.filter(f => f.c !== target).sort((a,b)=>a.hp-b.hp);
+      if (victims.length > 0 && frames > killInterval * participants.length * 0.8) {
+        const v = victims[0];
+        v.alive = false;
+        spark(v.x, v.y, "#ff9060");
+        popText(v.x, v.y - 10, "K.O.", "#ffd66b");
+        pulse();
+        addLog(`💥 ${esc(v.c.name).slice(0,10)} 탈락! 생존 ${fighters.filter(x=>x.alive).length}명`);
       }
     }
 
