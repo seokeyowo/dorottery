@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
@@ -141,13 +141,34 @@ button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
 .modal{position:fixed;inset:0;background:rgba(38,34,29,.5);display:flex;
   align-items:center;justify-content:center;z-index:100;padding:20px}
 .modal-card{background:#fff;border-radius:12px;padding:24px;max-width:480px;width:100%;
-  text-align:center;animation:pop .25s ease;border:1px solid var(--line)}
+  text-align:center;animation:pop .25s ease;border:1px solid var(--line);transform-origin:center}
 @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
 .winner-big{font-size:26px;font-weight:800;color:var(--accent);margin:14px 0;padding:18px;
   background:var(--accent-soft);border-radius:8px}
 .winner-big small{display:block;font-size:13px;color:var(--ink);font-weight:400;margin-top:6px}
 .winner-list{text-align:left;max-height:320px;overflow:auto}
 .winner-list .pool-item{background:#faf8f4;margin-bottom:4px;border-radius:6px;border:1px solid var(--line)}
+.result-burst{position:absolute;inset:auto auto 18px 50%;transform:translateX(-50%);
+  width:320px;height:320px;border-radius:50%;pointer-events:none;opacity:.18;
+  background:radial-gradient(circle, rgba(255,214,107,.9) 0%, rgba(255,214,107,.28) 28%, rgba(255,214,107,0) 65%);
+  animation:burst 1.1s ease-out infinite}
+@keyframes burst{0%{transform:translateX(-50%) scale(.4);opacity:0}35%{opacity:.32}100%{transform:translateX(-50%) scale(1.8);opacity:0}}
+.battle-shell{position:relative}
+.battle-shake{animation:shake .15s linear 2}
+.battle-flash{position:absolute;inset:0;background:radial-gradient(circle at center, rgba(255,214,107,.35), rgba(255,214,107,0) 55%);
+  pointer-events:none;opacity:0;transition:opacity .12s}
+.battle-flash.on{opacity:1}
+@keyframes shake{0%{transform:translate(0,0)}25%{transform:translate(-3px,2px)}50%{transform:translate(3px,-2px)}75%{transform:translate(-2px,1px)}100%{transform:translate(0,0)}}
+
+.busy-overlay{position:fixed;inset:0;background:rgba(247,245,241,.78);backdrop-filter:blur(2px);
+  z-index:220;display:flex;align-items:center;justify-content:center;padding:24px}
+.busy-card{min-width:min(92vw,420px);background:#fff;border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 18px 60px rgba(38,34,29,.16);padding:24px 22px;text-align:center}
+.busy-spinner{width:40px;height:40px;border:4px solid rgba(91,111,138,.18);border-top-color:var(--accent);
+  border-radius:50%;margin:0 auto 14px;animation:spin .9s linear infinite}
+.busy-title{font-size:18px;font-weight:800;color:var(--ink)}
+.busy-sub{margin-top:6px;font-size:12px;color:var(--muted);line-height:1.5}
+.app-disabled{pointer-events:none;user-select:none;filter:saturate(.85)}
 
 body{padding-bottom:80px}
 </style>
@@ -158,7 +179,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.0</div>
+  <div class="ver">v1.2</div>
 </header>
 
 <div class="layout">
@@ -184,30 +205,23 @@ body{padding-bottom:80px}
         <label class="chip-toggle"><input type="checkbox" id="excludeFloating" /> 유동 제외</label>
         <label class="chip-toggle"><input type="checkbox" id="excludeAnon" /> 익명 제외</label>
         <label class="chip-toggle"><input type="checkbox" id="dedup" checked /> 1인 1댓</label>
+        <label class="chip-toggle"><input type="checkbox" id="usePostCommentSum" /> 글댓합 사용</label>
       </div>
+      <div class="hint">글댓합은 기본 꺼짐입니다. 필요할 때만 켜고, 같은 글을 짧은 시간에 반복 조회하면 디시 임시밴이 걸릴 수 있습니다.</div>
       <div class="row mt">
         <input id="includeKw" placeholder="필수 단어 (쉼표 구분)" />
         <input id="excludeKw" placeholder="금지 단어 (쉼표 구분)" />
       </div>
-
-      <div class="subcard">
-        <div class="sub-head">
-          <strong>눔계 필터</strong>
-          <label class="switch"><input type="checkbox" id="gallogOn" /><span></span></label>
-        </div>
-        <div id="gallogPanel" class="hidden">
-          <div class="hint">눔계(부실 계정)를 자동으로 걸러냅니다. 갤로그의 누적 글/댓글 수가 기준 미만인 작성자를 후보에서 제외합니다. 활동량은 URL을 불러올 때 자동 조회됩니다.</div>
-          <div class="grid3 mt">
-            <div><label>글 ≥</label><input id="minPosts" type="number" min="0" value="0" /></div>
-            <div><label>댓글 ≥</label><input id="minReplies" type="number" min="0" value="0" /></div>
-            <div><label>합계 ≥</label><input id="minSum" type="number" min="0" value="0" /></div>
-          </div>
-          <div class="row mt">
-            <button id="loadProfiles" class="ghost">활동량 조회</button>
-            <span id="profileStatus" class="muted" style="align-self:center"></span>
-          </div>
-        </div>
+      <div class="row mt">
+        <input id="minSum" type="number" min="0" value="0" placeholder="컷트라인: 글+댓글 합계" />
       </div>
+
+    </section>
+
+    <section class="card">
+      <h3 class="sec">도움말</h3>
+      <div class="hint">불러오기는 댓글 페이지를 여러 번 요청할 수 있어요.</div>
+      <div class="hint" style="margin-top:8px">같은 링크를 단시간에 반복 조회하면 DC에서 임시 차단될 수 있으니, 필요한 경우에만 다시 불러오세요.</div>
     </section>
 
     <section class="card">
@@ -261,6 +275,14 @@ body{padding-bottom:80px}
   </div>
 </div>
 
+<div id="busyOverlay" class="busy-overlay hidden" aria-live="polite" aria-busy="true">
+  <div class="busy-card">
+    <div class="busy-spinner"></div>
+    <div id="busyTitle" class="busy-title">작업 중</div>
+    <div id="busySub" class="busy-sub">잠시만 기다려 주세요.</div>
+  </div>
+</div>
+
 <script>
 // 백엔드 API는 북마클릿 방식 전환으로 더 이상 필수가 아닙니다 (로컬 fallback만).
 const BACKEND_URL = "";
@@ -290,13 +312,23 @@ function applyFetchedData(data) {
   document.getElementById("commentCount").textContent = `· ${data.total}개 댓글`;
   document.getElementById("postTitle").textContent = data.title;
   document.getElementById("postInfo").classList.remove("hidden");
-  document.getElementById("profileStatus").textContent =
-    Object.keys(state.profiles).length ? `✓ ${Object.keys(state.profiles).length}명 활동량 포함됨` : "";
   refreshPool();
 }
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const state = { site:null, comments:[], profiles:{}, method:"basic", logs:[] };
+
+function setBusy(on, title = "작업 중", sub = "잠시만 기다려 주세요.") {
+  $("busyTitle").textContent = title;
+  $("busySub").textContent = sub;
+  $("busyOverlay").classList.toggle("hidden", !on);
+  document.body.classList.toggle("app-disabled", on);
+  ["postUrl","loadBtn","drawBtn","winnerCount","includeKw","excludeKw","excludeFloating","excludeAnon","dedup","usePostCommentSum"]
+    .forEach(id => {
+      const el = $(id);
+      if (el) el.disabled = on;
+    });
+}
 
 // 순수 랜덤 셔플
 function randomShuffle(arr) {
@@ -411,6 +443,37 @@ function renderLogs() {
 }
 
 let loading = false;
+let profileLoading = false;
+
+async function autoLoadProfiles() {
+  if (profileLoading) return;
+  const users = [...new Set(state.comments.filter(c => c.userId).map(c => c.userId))];
+  if (!users.length) return;
+  profileLoading = true;
+  $("loadBtn").disabled = true;
+  $("loadBtn").innerHTML = `<span class="spinner"></span> 작성자 조회 중`;
+  setBusy(true, "작성자 정보 조회 중", `댓글 작성자 ${users.length}명의 글/댓글 수를 불러오는 중입니다.`);
+  try {
+    const res = await fetch(API + "/api/profiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ site: state.site, users })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "프로필 조회 실패");
+    state.profiles = data.profiles || {};
+    refreshPool();
+    $("loadErr").textContent = "";
+  } catch (e) {
+    $("loadErr").textContent = "작성자 정보 조회 실패: " + e.message;
+  } finally {
+    profileLoading = false;
+    $("loadBtn").innerHTML = "불러오기";
+    $("loadBtn").disabled = false;
+    setBusy(false);
+  }
+}
+
 $("loadBtn").onclick = async () => {
   if (loading) return;
   const url = $("postUrl").value.trim();
@@ -440,7 +503,7 @@ $("loadBtn").onclick = async () => {
     $("postTitle").textContent = data.title;
     $("postInfo").classList.remove("hidden");
     refreshPool();
-    if ($("gallogOn").checked) autoLoadProfiles();
+    if ($("usePostCommentSum").checked) autoLoadProfiles();
   } catch (e) {
     if (e.name === "AbortError") {
       $("loadErr").textContent = "60초 초과 — DC가 응답하지 않습니다. 잠시 후 재시도하세요.";
@@ -464,47 +527,14 @@ document.querySelectorAll(".mcard").forEach(b => {
   };
 });
 
-$("gallogOn").onchange = () => {
-  const on = $("gallogOn").checked;
-  $("gallogPanel").classList.toggle("hidden", !on);
-  // 필터를 처음 켤 때 아직 활동량 미조회면 자동 조회
-  if (on && state.comments.length && !Object.keys(state.profiles).length) {
-    autoLoadProfiles();
-  }
-  refreshPool();
-};
-
-async function autoLoadProfiles() {
-  const users = [...new Set(state.comments.filter(c => c.userId).map(c => c.userId))];
-  if (!users.length) return;
-  $("profileStatus").textContent = `조회 중... (${users.length}명, 캐시 활용)`;
-  $("loadProfiles").disabled = true;
-  try {
-    const res = await fetch(API + "/api/profiles", {
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ site: state.site, users })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "실패");
-    state.profiles = data.profiles;
-    const ca = data.cached || 0, fe = data.fetched || 0;
-    $("profileStatus").textContent = `✓ ${users.length}명 완료 (캐시 ${ca} / 신규 ${fe})`;
-    refreshPool();
-  } catch (e) { $("profileStatus").textContent = "조회 실패: " + e.message; }
-  finally { $("loadProfiles").disabled = false; }
-}
-$("loadProfiles").onclick = autoLoadProfiles;
-
 function getPool(wantStages) {
-  // 파이프라인: state.comments(모든 댓글, 중복 포함) → ① 유동/익명 → ② 키워드 → ③ 눔계 → ④ 1인1댓
+  // 파이프라인: state.comments(모든 댓글, 중복 포함) → ① 유동/익명 → ② 키워드 → ③ 1인1댓
   const incKw = $("includeKw").value.split(",").map(s=>s.trim()).filter(Boolean);
   const excKw = $("excludeKw").value.split(",").map(s=>s.trim()).filter(Boolean);
   const exFloating = $("excludeFloating").checked;
   const exAnon = $("excludeAnon").checked;
   const dedup = $("dedup").checked;
-  const useGallog = $("gallogOn").checked;
-  const minPosts = parseInt($("minPosts").value) || 0;
-  const minReplies = parseInt($("minReplies").value) || 0;
+  const useSum = $("usePostCommentSum").checked;
   const minSum = parseInt($("minSum").value) || 0;
 
   const stages = { total: state.comments.length };
@@ -525,18 +555,16 @@ function getPool(wantStages) {
   });
   stages.afterKeyword = s2.length;
 
-  // ③ 눔계
-  let s3 = s2.filter(c => {
-    if (!useGallog) return true;
-    if (!c.userId) return false;
-    const p = state.profiles[c.userId];
-    if (!p) return false;
-    if (p.posts < minPosts) return false;
-    if (p.replies < minReplies) return false;
-    if ((p.posts + p.replies) < minSum) return false;
-    return true;
-  });
-  stages.afterGallog = s3.length;
+  // ③ 글댓합 필터
+  let s3 = s2;
+  if (useSum) {
+    s3 = s2.filter(c => {
+      const p = state.profiles[c.userId];
+      if (!p) return true;
+      return (Number(p.posts) + Number(p.replies)) >= minSum;
+    });
+  }
+  stages.afterSum = s3.length;
 
   // ④ 1인1댓 dedup — 위 단계에서 살아남은 댓글 중 사용자별 첫 번째만 유지
   let out = s3;
@@ -560,8 +588,8 @@ function refreshPool() {
     const parts = [`전체 ${stages.total}`];
     if (stages.afterType !== stages.total) parts.push(`타입필터 ${stages.afterType}`);
     if (stages.afterKeyword !== stages.afterType) parts.push(`키워드 ${stages.afterKeyword}`);
-    if (stages.afterGallog !== stages.afterKeyword) parts.push(`눔계 ${stages.afterGallog}`);
-    if ($("dedup").checked && stages.final !== stages.afterGallog) parts.push(`1인1댓 ${stages.final}`);
+    if (stages.afterSum !== stages.afterKeyword) parts.push(`글댓합≥${minSum} ${stages.afterSum}`);
+    if ($("dedup").checked && stages.final !== stages.afterSum) parts.push(`1인1댓 ${stages.final}`);
     else if (stages.final === stages.total) parts.push(`후보 ${stages.final}`);
     $("footDesc").textContent = parts.join(" → ");
   }
@@ -572,7 +600,7 @@ function refreshPool() {
   if (!pool.length) { $("pool").innerHTML = '<div class="muted" style="padding:8px">필터 조건에 맞는 후보가 없습니다.</div>'; return; }
   $("pool").innerHTML = pool.slice(0, 200).map(c => {
     const p = state.profiles[c.userId];
-    const stat = p ? `글 ${p.posts} / 댓 ${p.replies}` : "";
+    const stat = p ? `글 ${p.posts} / 댓 ${p.replies} / 합 ${(Number(p.posts)||0)+(Number(p.replies)||0)}` : "정보 조회 중";
     const tag = c.type === 'fixed' ? '고닉' : c.type === 'floating' ? '유동' : '익명';
     return `<div class="pool-item"><span class="pool-name">${esc(c.name)}</span>
       <span class="pool-tag ${c.type}">${tag}</span>
@@ -581,9 +609,16 @@ function refreshPool() {
   }).join("") + (pool.length > 200 ? `<div class="muted" style="padding:8px">…외 ${pool.length-200}명</div>` : "");
 }
 
-["includeKw","excludeKw","excludeFloating","excludeAnon","dedup","minPosts","minReplies","minSum","winnerCount"].forEach(id => {
+["includeKw","excludeKw","excludeFloating","excludeAnon","dedup","usePostCommentSum","winnerCount"].forEach(id => {
   const el = $(id);
   el.addEventListener(el.type === "checkbox" ? "change" : "input", refreshPool);
+});
+
+$("usePostCommentSum").addEventListener("change", async () => {
+  refreshPool();
+  if ($("usePostCommentSum").checked && state.comments.length) {
+    await autoLoadProfiles();
+  }
 });
 
 // 숫자 입력 포커스 시 전체 선택 (0 prefix 문제 방지)
@@ -604,7 +639,7 @@ $("drawBtn").onclick = async () => {
   }
 
   // 공정성 엔트로피: 비트코인 최신 블록 해시 + 현재 시각 조합
-  $("drawBtn").disabled = true; $("drawBtn").textContent = "블록 조회 중…";
+  setBusy(true, "블록 조회 중", "비트코인 최신 블록 해시를 확인하는 중입니다. 잠시만 기다려 주세요.");
   let entropy;
   try {
     const blk = await getBitcoinBlock();
@@ -612,8 +647,9 @@ $("drawBtn").onclick = async () => {
   } catch (e) {
     // 블록 조회 실패 시 시각+Math.random 폴백 (그래도 로그 남음)
     entropy = { source: "time", hash: Math.random().toString(36).slice(2) + Date.now().toString(36), ts: Date.now() };
+  } finally {
+    setBusy(false);
   }
-  $("drawBtn").disabled = false; $("drawBtn").textContent = "🎲 추첨 시작";
 
   const fp = await poolFingerprint(pool);
   const seed = `${entropy.hash}::${fp}::${entropy.ts}`;
@@ -654,65 +690,29 @@ function renderResult(picked, seed) {
   let body;
   if (picked.length === 1) {
     const w = picked[0];
-    body = `<div style="font-size:13px;color:#888">🏆 당첨자</div>
-      <div class="winner-big">${esc(w.name)}<small>${esc(w.text)}</small></div>`;
+    body = `<div class="result-burst"></div><div style="font-size:13px;color:#888">🏆 당첨자</div>
+      <div class="winner-big" style="transform:scale(1.03);box-shadow:0 14px 40px rgba(91,111,138,.16)">${esc(w.name)}<small>${esc(w.text)}</small></div>`;
   } else {
-    body = `<div style="font-size:14px;font-weight:700;margin-bottom:10px">🏆 당첨자 ${picked.length}명</div>
+    body = `<div class="result-burst"></div><div style="font-size:14px;font-weight:700;margin-bottom:10px">🏆 당첨자 ${picked.length}명</div>
       <div class="winner-list">${picked.map((w,i) => `<div class="pool-item">
         <span class="pool-name">${i+1}. ${esc(w.name)}</span>
         <span>${esc(w.text).slice(0,60)}</span></div>`).join("")}</div>`;
   }
   $("resultBody").innerHTML = body + seedFoot(seed);
+  const card = $("resultCard");
+  card.style.transform = "scale(1.02)";
+  setTimeout(() => { card.style.transform = ""; }, 220);
 }
 
 function rouletteAnim(picked, pool, seed) {
-  // 풀에서 중복 없이 셔플해 순회 (모자라면 다시 셔플)
-  let bag = [], lastName = "";
-  const refill = () => {
-    bag = pool.slice().sort(() => Math.random()-0.5);
-    if (bag[0] && bag[0].name === lastName && bag.length > 1) [bag[0], bag[1]] = [bag[1], bag[0]];
-  };
-  refill();
-  $("resultBody").innerHTML = `<div class="winner-big" id="rouletteBox">…</div>`;
-  let n = 0;
-  const total = 55 + Math.floor(Math.random()*15);
-  const tick = () => {
-    if (!bag.length) refill();
-    const c = bag.pop();
-    lastName = c.name;
-    $("rouletteBox").innerHTML = `${esc(c.name)}<small>${esc(c.text).slice(0,40)}</small>`;
-    n++;
-    // 점점 느려지는 딜레이
-    const delay = 40 + Math.pow(n/total, 2.2) * 280;
-    if (n < total) setTimeout(tick, delay); else renderResult(picked, seed);
-  };
-  tick();
+  $("resultBody").innerHTML = `<div class="winner-big">추첨 중…<small>당첨자는 결과창에서만 공개됩니다.</small></div>`;
+  setTimeout(() => renderResult(picked, seed), 2600);
 }
 
 function slotAnim(picked, pool, seed) {
-  const target = picked[0].name;
   const ROW = 56;
   const VISIBLE = 3;
-  const SPINS = 70 + Math.floor(Math.random()*20);
-
-  // 셔플된 풀을 반복하며 채워서 같은 이름이 연속/근접해서 나오지 않게
-  const uniqueNames = [...new Set(pool.map(c => c.name))].filter(n => n !== target);
-  const names = [];
-  let bag = [];
-  const refill = () => { bag = uniqueNames.slice().sort(() => Math.random()-0.5); };
-  for (let k = 0; k < SPINS; k++) {
-    if (!bag.length) refill();
-    let pick = bag.pop();
-    // 직전 3개 안에 같은 이름이 있으면 다른 걸로
-    const recent = names.slice(-3);
-    let tries = 0;
-    while (recent.includes(pick) && bag.length && tries < 5) { pick = bag.pop(); tries++; }
-    names.push(pick || uniqueNames[0] || target);
-  }
-  // 마지막 결과 라인
-  names.push(uniqueNames[Math.floor(Math.random()*uniqueNames.length)] || target);
-  names.push(target);
-  names.push(uniqueNames[Math.floor(Math.random()*uniqueNames.length)] || target);
+  const names = Array.from({ length: 27 }, (_, i) => `추첨 ${i + 1}`);
 
   $("resultBody").innerHTML = `
     <div style="font-size:13px;color:#888;margin-bottom:10px">🎰 슬롯</div>
@@ -725,19 +725,13 @@ function slotAnim(picked, pool, seed) {
           font-weight:800;font-size:20px;color:#fff;border-bottom:1px solid #2a2520">${esc(n).slice(0,12)}</div>`).join("")}
       </div>
     </div>`;
-  const strip = document.getElementById("slotStrip");
-  const targetIdx = names.length - 2;
-  const finalY = -(targetIdx - 1) * ROW;
-  strip.style.transition = "transform 5s cubic-bezier(.12,.7,.2,1)";
-  requestAnimationFrame(() => { strip.style.transform = `translateY(${finalY}px)`; });
-  setTimeout(() => renderResult(picked, seed), 5300);
+  setTimeout(() => renderResult(picked, seed), 2600);
 }
 
 // ── 카드뽑기 (유저 클릭이 당첨 결정) ─────────────
 function cardInteractive(pool, n) {
   // 풀 전원을 카드로 (순서는 랜덤)
   const cards = pool.slice().sort(()=>Math.random()-0.5);
-  const targetIdx = cards.indexOf(target);
 
   // 카드 수에 따라 크기 조정 (20장 이하 크게, 50장 이하 중간, 그 이상 소형)
   const cw = cards.length <= 20 ? 80 : cards.length <= 50 ? 56 : 40;
@@ -755,7 +749,7 @@ function cardInteractive(pool, n) {
       <div class="face-front" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
         background:linear-gradient(135deg,#fff,#ffe1ec);color:#e91e63;border-radius:8px;
         font-size:${fs}px;padding:4px;text-align:center;backface-visibility:hidden;transform:rotateY(180deg);word-break:break-all">
-        ${esc(c.name).slice(0,10)}
+        선택됨
       </div>
     </div>`).join("");
   $("resultBody").innerHTML = `
@@ -777,17 +771,12 @@ function cardInteractive(pool, n) {
       el.style.transform = "rotateY(180deg)";
       el.style.boxShadow = "0 0 24px #ffd66b";
       document.getElementById("pickedCount").textContent = `(${chosenIdx.length}/${n})`;
+      $("cardHint").textContent = `카드 ${chosenIdx.length}/${n} 선택됨`;
       if (chosenIdx.length === n) {
-        // 선택 완료 — 나머지 카드도 순차 공개 (결과 확인용)
-        document.querySelectorAll(".card-el").forEach((card, j) => {
-          if (chosenIdx.includes(j)) return;
-          setTimeout(() => { card.style.transform = "rotateY(180deg)"; card.style.opacity = "0.5"; }, 200 + j * 40);
-        });
         const picked = chosenIdx.map(idx => cards[idx]);
         recordLog({ method: "card", pool, picked,
           entropy: { source: "user-click", ts: Date.now() }, fp: "", seed: "" });
-        $("cardHint").innerHTML = `🏆 ${picked.map(p => `<b>${esc(p.name)}</b>`).join(", ")} 당첨!`;
-        setTimeout(() => renderResult(picked), 800 + cards.length * 40);
+        setTimeout(() => renderResult(picked), 250);
       }
     };
   });
@@ -809,19 +798,26 @@ function cardAnim(picked, pool, seed) { renderResult(picked, seed); }
 function battleAnim(picked, pool, seed) {
   const W = 480, H = 420;
   const target = picked[0];
-  const targetKey = target.userId || target.name;
   // 풀 전원 참가 (제한 없음)
   const participants = pool.slice().sort(()=>Math.random()-0.5);
   const N = participants.length;
 
   $("resultBody").innerHTML = `
-    <div style="font-size:13px;color:#888;margin-bottom:10px">⚔️ 배틀로얄 — 라스트 원 스탠딩</div>
-    <canvas id="battle" width="${W}" height="${H}"
-      style="background:radial-gradient(ellipse at center,#3a2818,#1a0f08);
-             border-radius:12px;max-width:100%;display:block;margin:0 auto"></canvas>
-    <div id="battleLog" style="margin-top:8px;font-size:12px;color:var(--muted);
-      height:40px;overflow:hidden;font-family:ui-monospace,monospace"></div>`;
+    <div style="font-size:13px;color:#888;margin-bottom:10px">⚔️ 배틀로얄 — 생존 경쟁</div>
+    <div id="battleShell" class="battle-shell">
+      <canvas id="battle" width="${W}" height="${H}"
+        style="background:radial-gradient(ellipse at center,#3a2818,#1a0f08);
+               border-radius:12px;max-width:100%;display:block;margin:0 auto"></canvas>
+      <div id="battleFlash" class="battle-flash"></div>
+      <div id="battleZoom" style="position:absolute;inset:0;pointer-events:none;border-radius:12px;box-shadow:inset 0 0 0 0 rgba(255,214,107,0);"></div>
+    </div>
+    <div id="battleLog" style="margin-top:10px;font-size:12px;color:var(--muted);
+      height:72px;overflow:hidden;font-family:ui-monospace,monospace;background:#1a1410;
+      border-radius:10px;padding:8px 10px;border:1px solid var(--line);"></div>`;
   const cv = document.getElementById("battle"), ctx = cv.getContext("2d");
+  const shell = document.getElementById("battleShell");
+  const flash = document.getElementById("battleFlash");
+  const zoom = document.getElementById("battleZoom");
 
   // 초기 배치: 원형으로 분산
   const fighters = participants.map((c, i) => {
@@ -839,34 +835,131 @@ function battleAnim(picked, pool, seed) {
 
   const log = [];
   const addLog = (s) => {
-    log.push(s); if (log.length > 3) log.shift();
-    document.getElementById("battleLog").innerHTML = log.map(x=>`<div>${x}</div>`).join("");
+    log.unshift(s);
+    if (log.length > 5) log.pop();
+    document.getElementById("battleLog").innerHTML = log.map((x,i)=>`<div style="margin-bottom:${i===0?4:2}px;opacity:${1 - i*0.14};color:${i===0 ? '#ffd66b' : '#d8d2c8'}">${x}</div>`).join("");
+  };
+  const pulse = () => {
+    shell.classList.remove("battle-shake");
+    void shell.offsetWidth;
+    shell.classList.add("battle-shake");
+    flash.classList.add("on");
+    zoom.style.boxShadow = "inset 0 0 0 2px rgba(255,214,107,.45), inset 0 0 90px rgba(255,214,107,.12)";
+    setTimeout(() => flash.classList.remove("on"), 120);
+    setTimeout(() => { zoom.style.boxShadow = "inset 0 0 0 0 rgba(255,214,107,0)"; }, 160);
   };
 
   let frames = 0;
   const killInterval = 45; // 대략 0.75초마다 한 명 처치
+  let finaleStarted = false;
+  let finaleAt = 0;
 
-  const drawStick = (f, isTarget) => {
+  const drawKeyboard = (x, y, angle, scale = 1, glow = false) => {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.scale(scale, scale);
+    if (glow) {
+      ctx.shadowColor = "rgba(255,214,107,.45)";
+      ctx.shadowBlur = 10;
+    }
+    ctx.fillStyle = "#23211f";
+    ctx.strokeStyle = "#d9d4c7";
+    ctx.lineWidth = 1.2;
+    roundRect(-16, -6, 32, 12, 3);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#4b4741";
+    for (let r = -1; r < 2; r++) {
+      for (let c = -3; c < 4; c++) {
+        ctx.fillRect(c * 4.1 - 1.5, r * 3.2 - 1.1, 2.2, 1.6);
+      }
+    }
+    ctx.fillStyle = "#66615b";
+    ctx.fillRect(-11, -4.5, 22, 2.1);
+    ctx.restore();
+  };
+
+  const roundRect = (x, y, w, h, r) => {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  };
+
+  const drawFighter = (f, isTarget) => {
     if (!f.alive) return;
-    const flash = f.flashFrames > 0;
-    if (flash) f.flashFrames--;
-    // 몸통
-    ctx.strokeStyle = flash ? "#ff5050" : (isTarget ? "#ffd66b" : "#e0e0e0");
+    const hitFlash = f.flashFrames > 0;
+    if (hitFlash) f.flashFrames--;
+    const body = hitFlash ? "#ff6b6b" : (isTarget ? "#ffd66b" : "#d9d9d9");
+    const shirt = hitFlash ? "rgba(255,107,107,.35)" : (isTarget ? "rgba(255,214,107,.24)" : "rgba(255,255,255,.12)");
+    const skin = hitFlash ? "#7a3a3a" : "#efe2d4";
+    const facing = Math.sin((frames + f.x + f.y) * 0.04);
+    const armSwing = Math.sin((frames + f.x) * 0.12) * 0.4;
+    const legSwing = Math.cos((frames + f.y) * 0.12) * 0.35;
+    const weaponAngle = facing * 0.55 - 0.35;
+
+    // shadow
+    ctx.fillStyle = "rgba(0,0,0,.25)";
+    ctx.beginPath();
+    ctx.ellipse(f.x, f.y + 24, 12, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // weapon
+    drawKeyboard(f.x + facing * 7, f.y - 2, weaponAngle, 0.9 + (hitFlash ? 0.08 : 0), isTarget);
+
+    // legs
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 3.2;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(f.x, f.y + 8);
+    ctx.lineTo(f.x - 7 + legSwing * 3, f.y + 20);
+    ctx.moveTo(f.x, f.y + 8);
+    ctx.lineTo(f.x + 7 - legSwing * 3, f.y + 20);
+    ctx.stroke();
+
+    // torso
+    ctx.fillStyle = shirt;
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 2;
+    roundRect(f.x - 8, f.y - 8, 16, 20, 7);
+    ctx.fill();
+    ctx.stroke();
+
+    // head
+    ctx.fillStyle = skin;
+    ctx.strokeStyle = body;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(f.x, f.y - 14, 6, 0, Math.PI*2);  // 머리
+    ctx.arc(f.x, f.y - 18, 8.5, 0, Math.PI * 2);
+    ctx.fill();
     ctx.stroke();
+    // face highlight
+    ctx.fillStyle = hitFlash ? "#ff8a8a" : "rgba(255,255,255,.22)";
     ctx.beginPath();
-    ctx.moveTo(f.x, f.y - 8); ctx.lineTo(f.x, f.y + 10); // 몸
-    ctx.moveTo(f.x - 8, f.y - 2); ctx.lineTo(f.x + 8, f.y - 2); // 팔
-    ctx.moveTo(f.x, f.y + 10); ctx.lineTo(f.x - 6, f.y + 20); // 왼다리
-    ctx.moveTo(f.x, f.y + 10); ctx.lineTo(f.x + 6, f.y + 20); // 오다리
+    ctx.arc(f.x - 2.6, f.y - 20, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // arms holding keyboard
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(f.x - 7, f.y - 2);
+    ctx.lineTo(f.x - 13 + armSwing * 4, f.y + 4);
+    ctx.moveTo(f.x + 7, f.y - 2);
+    ctx.lineTo(f.x + 14 - armSwing * 4, f.y + 3);
     ctx.stroke();
-    // 이름
-    ctx.fillStyle = flash ? "#ff5050" : (isTarget ? "#ffd66b" : "#ccc");
+
+    // name
+    ctx.fillStyle = hitFlash ? "#ff5050" : (isTarget ? "#ffd66b" : "#ccc");
     ctx.font = `${isTarget ? "bold " : ""}10px sans-serif`;
     ctx.textAlign = "center";
-    ctx.fillText(esc(f.c.name).slice(0,8), f.x, f.y - 24);
+    ctx.fillText(esc(f.c.name).slice(0,8), f.x, f.y - 30);
   };
 
   const step = () => {
@@ -892,12 +985,15 @@ function battleAnim(picked, pool, seed) {
       if (!f.alive) continue;
       ctx.beginPath(); ctx.ellipse(f.x, f.y+22, 10, 3, 0, 0, Math.PI*2); ctx.fill();
     }
+    const alive = fighters.filter(f => f.alive);
+    const crowd = Math.max(alive.length, 1);
+    const scale = Math.min(1.18, 0.92 + (participants.length - crowd) / Math.max(participants.length,1) * 0.32);
+    shell.style.transform = `scale(${scale})`;
     // 파이터
-    for (const f of fighters) drawStick(f, f.c === target);
+    for (const f of fighters) drawFighter(f, false);
 
     // 주기적으로 한 명 처치 (타겟은 살려두기)
     if (frames % killInterval === 0) {
-      const alive = fighters.filter(f => f.alive);
       const aliveCount = alive.length;
       if (aliveCount > 1) {
         // 타겟이 아닌 파이터 중 랜덤 선택해 처치
@@ -911,30 +1007,43 @@ function battleAnim(picked, pool, seed) {
           const killer = dists[0].f;
           victim.alive = false;
           killer.flashFrames = 20;
-          addLog(`💥 <b style="color:#ff9898">${esc(killer.c.name).slice(0,10)}</b> → ${esc(victim.c.name).slice(0,10)} 처치 (남은 ${aliveCount-1}명)`);
+          pulse();
+          addLog(`💥 ${esc(killer.c.name).slice(0,10)} vs ${esc(victim.c.name).slice(0,10)} 충돌! 생존 ${aliveCount-1}명`);
         }
       }
     }
 
     const stillAlive = fighters.filter(f => f.alive).length;
-    if (stillAlive > 1 && frames < 2500) {
-      requestAnimationFrame(step);
-    } else {
-      // 마지막 — 타겟만 남기고 강제 종료
-      fighters.forEach(f => { if (f.c !== target) f.alive = false; });
-      const t = fighters.find(f => f.c === target);
-      ctx.clearRect(0,0,W,H);
+    if (!finaleStarted && stillAlive <= 1) {
+      finaleStarted = true;
+      finaleAt = performance.now();
+      addLog(`🏆 ${esc(picked[0].name).slice(0,10)} 최후 생존!`);
+      pulse();
+      flash.classList.add("on");
+    }
+
+    if (finaleStarted) {
       ctx.fillStyle = "rgba(255,214,107,.15)";
       ctx.fillRect(0, 0, W, H);
-      drawStick(t, true);
+      ctx.beginPath();
+      ctx.arc(W/2, H/2, 130, 0, Math.PI*2);
+      ctx.strokeStyle = "rgba(255,214,107,.5)";
+      ctx.lineWidth = 4;
+      ctx.stroke();
       ctx.fillStyle = "#ffd66b";
       ctx.font = "bold 28px sans-serif"; ctx.textAlign = "center";
       ctx.fillText("WINNER", W/2, 60);
-      ctx.font = "bold 16px sans-serif";
-      ctx.fillText(target.name, W/2, H - 20);
-      addLog(`🏆 <b style="color:#ffd66b">${esc(target.name)}</b> 최후의 생존자!`);
-      setTimeout(() => renderResult(picked, seed), 1800);
+      ctx.font = "bold 18px sans-serif";
+      ctx.fillText(esc(picked[0].name), W/2, H - 20);
+      if (performance.now() - finaleAt > 3200) {
+        renderResult(picked, seed);
+        return;
+      }
+      requestAnimationFrame(step);
+      return;
     }
+
+    requestAnimationFrame(step);
   };
   step();
 }
@@ -976,3 +1085,4 @@ renderResult = function(picked, seed) {
 </script>
 </body>
 </html>
+
