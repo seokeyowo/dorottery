@@ -167,16 +167,11 @@ async function fetchAllComments({ id, no, csrf, refererUrl }) {
       const date = $el.find(".date").text().trim();
       if ($el.find(".nick").hasClass("comment_boy")) return;
 
-      // 닉 옆 아이콘 유무로 고닉(매니저/부매니저/고닉/실베) vs 유동(반고닉/유동/익명) 구분
+      // 고닉(매니저/부매니저/고닉/실베) vs 유동(유동/반고닉/익명)
+      // 회원은 갤로그 링크(userId)가 있고, 비회원은 없음 — 가장 신뢰 가능한 신호
+      const type = userId ? "fixed" : "floating";
+
       const $nick = $el.find(".nick").first();
-      const iconImgs = $nick.find("img").map((_, im) => ($(im).attr("src") || "") + " " + ($(im).attr("class") || "")).get().join(" ").toLowerCase();
-      const nickCls = ($nick.attr("class") || "").toLowerCase();
-      const iconBag = (iconImgs + " " + nickCls).toLowerCase();
-      const hasMemberIcon = /manager|submanager|sub[_-]?manager|mana\.|\bmana_|icon_manager|gall_manager|sub-memb|sub_memb|nickm|fix_nik|silver|silber|realtime_best|rbest/.test(iconBag) || (!!userId && $nick.find("img").length > 0);
-
-      // 2종 분류: fixed(고닉 계열) | floating(유동 계열)
-      const type = hasMemberIcon ? "fixed" : "floating";
-
       const rawName = $nick.text().trim();
       const name = rawName || (type === "floating" ? "유동" : "미상");
       const popupHtml = $el.find(".user_data_list, .user-popup, .user_info, .pop_userinfo, .user_layer").first().html() || "";
