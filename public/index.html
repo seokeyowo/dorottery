@@ -1461,62 +1461,133 @@ async function captureResult() {
 // ── 키캡 뽑기 ───────────────────────────────────
 function keycapAnim(picked, pool, seed) {
   const winner = picked[0];
-  const MAX = Math.min(pool.length, 30);
-  let keys = pool.slice();
-  if (keys.length > MAX) {
-    const others = keys.filter(p => (p.userId||p.name) !== (winner.userId||winner.name));
-    others.sort(()=>Math.random()-0.5);
-    keys = [winner, ...others.slice(0, MAX-1)].sort(()=>Math.random()-0.5);
-  }
+  // 전원 참가 (제한 없음)
+  const keys = pool.slice().sort(()=>Math.random()-0.5);
   const winIdx = keys.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
+  const N = keys.length;
 
-  const capsHtml = keys.map((p,i)=>`
-    <div class="keycap" data-i="${i}" style="
-      width:72px;height:72px;border-radius:8px;
-      background:linear-gradient(180deg,#fafaf5 0%,#e8e3d3 75%,#d0c9b4 100%);
-      border:1px solid #b8b09a;box-shadow:0 4px 0 #9a927c, 0 6px 10px rgba(0,0,0,.25);
-      display:flex;align-items:center;justify-content:center;
-      font-size:11px;font-weight:800;color:#3a3225;padding:4px;
-      text-align:center;line-height:1.1;word-break:break-all;overflow:hidden;
-      transition:transform .25s, box-shadow .25s, background .25s">
-      ${esc((p.name||"").slice(0,8))}
-    </div>`).join("");
+  // 인원에 따라 키캡 사이즈 자동 조정 (많으면 작게)
+  let capSize, perRow;
+  if (N <= 24)      { capSize = 64; perRow = 8; }
+  else if (N <= 60) { capSize = 52; perRow = 10; }
+  else if (N <= 120){ capSize = 42; perRow = 12; }
+  else              { capSize = 34; perRow = 14; }
+  const gap = Math.max(4, Math.floor(capSize * 0.12));
+  const fontSz = Math.max(8, Math.floor(capSize * 0.18));
+
+  // 실제 기계식 키보드 느낌: 각 행을 살짝 stagger, 키캡은 체리 프로파일 스타일
+  // 행별로 이름을 나눔 (열 기준 grid) — 행마다 가로 오프셋을 다르게 주어 ANSI 느낌
+  const rowOffsets = [0, capSize*0.35, capSize*0.7, capSize*1.1, capSize*0.5, 0]; // 반복
+  const rows = [];
+  for (let i = 0; i < N; i += perRow) rows.push(keys.slice(i, i + perRow).map((p, j) => ({ p, idx: i + j })));
+
+  const rowsHtml = rows.map((row, rIdx) => {
+    const off = rowOffsets[rIdx % rowOffsets.length];
+    return `<div class="krow" style="display:flex;gap:${gap}px;margin-left:${off}px;margin-bottom:${gap}px">
+      ${row.map(({p, idx}) => `
+        <div class="keycap" data-i="${idx}" style="
+          width:${capSize}px;height:${capSize}px;
+          position:relative;border-radius:${Math.max(4, capSize*0.12)}px ${Math.max(4, capSize*0.12)}px ${Math.max(6, capSize*0.15)}px ${Math.max(6, capSize*0.15)}px;
+          background:linear-gradient(180deg,#3a3631 0%,#2a2621 100%);
+          box-shadow:
+            inset 0 -2px 0 #1a1712,
+            inset 0 1px 0 rgba(255,255,255,.05),
+            0 ${Math.max(3, capSize*0.08)}px 0 #14110e,
+            0 ${Math.max(5, capSize*0.11)}px 10px rgba(0,0,0,.5);
+          padding:${Math.max(3, capSize*0.08)}px ${Math.max(2, capSize*0.06)}px ${Math.max(6, capSize*0.14)}px;
+          transition:transform .12s, box-shadow .12s, background .12s">
+          <div class="kcap-top" style="
+            position:absolute;inset:${Math.max(2, capSize*0.08)}px ${Math.max(2, capSize*0.08)}px ${Math.max(6, capSize*0.18)}px;
+            border-radius:${Math.max(3, capSize*0.09)}px;
+            background:linear-gradient(180deg,#5a544c 0%,#4a443c 60%,#3a342c 100%);
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.3);
+            display:flex;align-items:center;justify-content:center;
+            font-size:${fontSz}px;font-weight:800;color:#e8e3d3;
+            font-family:'Consolas','Menlo',monospace;
+            text-align:center;line-height:1.1;letter-spacing:-.3px;
+            overflow:hidden;padding:2px;word-break:break-all">
+            ${esc((p.name||"").slice(0, Math.max(4, Math.floor(capSize/7))))}
+          </div>
+        </div>`).join("")}
+    </div>`;
+  }).join("");
 
   $("resultBody").innerHTML = `
-    <div style="font-size:13px;color:#888;margin-bottom:10px">⌨️ 키캡 뽑기</div>
-    <div style="padding:18px;background:linear-gradient(180deg,#2a2520,#15110d);border-radius:14px;
-         display:grid;grid-template-columns:repeat(6,1fr);gap:8px;justify-items:center;max-height:60vh;overflow:auto">
-      ${capsHtml}
+    <div style="font-size:13px;color:#888;margin-bottom:10px">⌨️ 키캡 뽑기 — ${N}키 풀커스텀 빌드</div>
+    <div id="kbBody" style="padding:${capSize*0.4}px ${capSize*0.4}px ${capSize*0.3}px;
+         background:linear-gradient(180deg,#6b655c 0%,#4a443c 40%,#2a2520 100%);
+         border-radius:${capSize*0.25}px;
+         box-shadow:0 10px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08);
+         border:1px solid #1a1712;
+         max-height:60vh;overflow:auto;
+         display:inline-block;max-width:100%">
+      ${rowsHtml}
     </div>
-    <div id="keycapHint" style="margin-top:10px;font-size:13px;color:var(--muted)">키캡 위를 훑는 중…</div>`;
+    <div id="keycapHint" style="margin-top:10px;font-size:13px;color:var(--muted)">LED 스윕 중…</div>`;
+
+  // 스크롤 래퍼
+  const kbBody = document.getElementById("kbBody");
+  kbBody.parentElement.style.textAlign = "center";
 
   const caps = Array.from(document.querySelectorAll(".keycap"));
-  const N = caps.length;
-  // 조명처럼 훑기: 처음엔 빠르게, 점점 느려지며 당첨 키캡에 정지
+  const tops = caps.map(c => c.querySelector(".kcap-top"));
+
+  // 조명 스윕: 처음엔 빠르게, 점점 느려지며 당첨 키캡에서 정지
   let step = 0;
-  const totalSteps = N * 3 + winIdx + 1; // 최소 3바퀴 + 당첨 위치
+  const baseLoops = N <= 40 ? 3 : (N <= 100 ? 2 : 1);
+  const totalSteps = N * baseLoops + winIdx + 1;
+
+  function resetKey(i) {
+    const c = caps[i], t = tops[i];
+    c.style.transform = "";
+    c.style.background = "linear-gradient(180deg,#3a3631 0%,#2a2621 100%)";
+    t.style.background = "linear-gradient(180deg,#5a544c 0%,#4a443c 60%,#3a342c 100%)";
+    t.style.color = "#e8e3d3";
+    t.style.textShadow = "";
+  }
+  function highlightKey(i, strong) {
+    const c = caps[i], t = tops[i];
+    c.style.transform = strong ? "translateY(-6px) scale(1.12)" : "translateY(-2px)";
+    c.style.background = "linear-gradient(180deg,#ffd66b 0%,#c89a2a 100%)";
+    t.style.background = strong
+      ? "linear-gradient(180deg,#fff6d6 0%,#ffd66b 60%,#c89a2a 100%)"
+      : "linear-gradient(180deg,#fff0b8 0%,#ffd66b 100%)";
+    t.style.color = "#3a2800";
+    t.style.textShadow = strong ? "0 0 6px rgba(255,214,107,.8)" : "";
+    if (strong) c.style.boxShadow =
+      "inset 0 -2px 0 #8a6a10, 0 6px 0 #6a4a00, 0 10px 24px rgba(255,214,107,.6), 0 0 20px #fff";
+  }
+
   function tick() {
-    caps.forEach(c => {
-      c.style.transform = ""; c.style.boxShadow = "0 4px 0 #9a927c, 0 6px 10px rgba(0,0,0,.25)";
-      c.style.background = "linear-gradient(180deg,#fafaf5 0%,#e8e3d3 75%,#d0c9b4 100%)";
-    });
+    // 이전 키 해제 (직전 몇 개만 리셋해도 됨 — 성능)
+    const prev = (step - 1 + N) % N;
+    if (step > 0) resetKey(prev);
     const i = step % N;
+    highlightKey(i, false);
+
+    // 스크롤 따라가기 (많을 때)
     const cur = caps[i];
-    cur.style.transform = "translateY(-3px) scale(1.05)";
-    cur.style.boxShadow = "0 7px 0 #9a927c, 0 10px 18px rgba(255,214,107,.55)";
-    cur.style.background = "linear-gradient(180deg,#fff6d6,#ffd66b)";
+    if (cur && kbBody) {
+      const r = cur.getBoundingClientRect();
+      const pr = kbBody.getBoundingClientRect();
+      if (r.top < pr.top || r.bottom > pr.bottom) {
+        cur.scrollIntoView({ block: "center", behavior: "instant" });
+      }
+    }
+
     step++;
     if (step >= totalSteps) {
-      // 최종 강조
-      cur.style.transform = "translateY(-8px) scale(1.18)";
-      cur.style.boxShadow = "0 12px 0 #b89300, 0 0 28px #ffd66b, 0 0 14px #fff";
+      // 최종: 당첨 키캡 강조
+      resetKey(i);
+      highlightKey(winIdx, true);
+      const wc = caps[winIdx];
+      if (wc) wc.scrollIntoView({ block: "center", behavior: "smooth" });
       $("keycapHint").innerHTML = `🏆 <b>${esc(winner.name)}</b> 당첨!`;
       setTimeout(() => renderResult(picked), 900);
       return;
     }
-    // 가속→감속 (ease-out)
     const t = step / totalSteps;
-    const delay = 40 + Math.pow(t, 3) * 260;
+    const delay = 25 + Math.pow(t, 3) * 240;
     setTimeout(tick, delay);
   }
   setTimeout(tick, 300);
