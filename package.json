@@ -1,12 +1,12 @@
 {
   "name": "dororong-lottery",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "DC 게시글 댓글 추첨기",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "build": "pkg . --output dist/DororongLottery.exe --targets node18-win-x64"
+    "build": "pkg . --output dist/DororongLottery.exe --targets node18-win-x64 && node scripts/set-icon.js DororongLottery.exe"
   },
   "bin": "bootstrap.js",
   "dependencies": {
@@ -15,7 +15,8 @@
   },
   "devDependencies": {
     "@yao-pkg/pkg": "^6.18.1",
-    "pkg": "^5.8.1"
+    "pkg": "^5.8.1",
+    "rcedit": "^5.0.2"
   },
   "pkg": {
     "assets": [

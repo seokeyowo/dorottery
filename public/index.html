@@ -135,7 +135,7 @@ button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
 .pool::-webkit-scrollbar-thumb{background:#d8d2c8;border-radius:4px}
 .pool-item{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
 .pool-item:last-child{border:none}
-.pool-name{color:var(--accent);font-weight:700;flex-shrink:0;min-width:80px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pool-name{color:var(--accent);font-weight:700;flex-shrink:0;min-width:100px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}
 .pool-tag{font-size:10px;color:var(--muted);background:#eee;padding:1px 7px;border-radius:4px;font-weight:600}
 .pool-tag.fixed{background:#fff3c4;color:#a37200}
 .pool-tag.floating{background:#f0e4d4;color:var(--warn)}
@@ -144,12 +144,12 @@ button.primary:disabled{background:#9aa5b5;border-color:#9aa5b5}
 
 .modal{position:fixed;inset:0;background:rgba(38,34,29,.5);display:flex;
   align-items:center;justify-content:center;z-index:100;padding:20px}
-.modal-card{background:#fff;border-radius:12px;padding:24px;max-width:900px;width:calc(100% - 24px);max-height:calc(100vh - 24px);overflow:auto;
+.modal-card{background:#fff;border-radius:12px;padding:24px;max-width:1180px;width:calc(100% - 16px);max-height:calc(100vh - 16px);overflow:auto;
   text-align:center;animation:pop .25s ease;border:1px solid var(--line);transform-origin:center}
 @keyframes pop{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
-.winner-big{font-size:26px;font-weight:800;color:var(--accent);margin:14px 0;padding:18px;
+.winner-big{font-size:34px;font-weight:800;color:var(--accent);margin:14px 0;padding:24px;
   background:var(--accent-soft);border-radius:8px}
-.winner-big small{display:block;font-size:13px;color:var(--ink);font-weight:400;margin-top:6px}
+.winner-big small{display:block;font-size:15px;color:var(--ink);font-weight:400;margin-top:8px}
 .winner-list{text-align:left;max-height:320px;overflow:auto}
 .winner-list .pool-item{background:#faf8f4;margin-bottom:4px;border-radius:6px;border:1px solid var(--line)}
 .result-burst{position:absolute;inset:auto auto 18px 50%;transform:translateX(-50%);
@@ -183,7 +183,7 @@ body{padding-bottom:80px}
     <img src="burger.png" alt="logo" onerror="this.style.display='none'" />
     <span>도로롱 기계식 키보드 갤러리 추첨기</span>
   </div>
-  <div class="ver">v1.9.0</div>
+  <div class="ver">v1.10.0</div>
 </header>
 
 <div class="layout">
@@ -1843,6 +1843,7 @@ function keycapAnim(picked, pool, seed) {
 
 // ── 레이싱 ─────────────────────────────────────
 function horseAnim(picked, pool, seed) {
+  window.__racingPodiumShown = false;
   const winner = picked[0];
   let racers = pool.slice().sort(()=>Math.random()-0.5);
   const winIdx = racers.findIndex(p => (p.userId||p.name) === (winner.userId||winner.name));
@@ -1930,13 +1931,12 @@ function horseAnim(picked, pool, seed) {
   const duration = 16000; // 16초 — 역전 드라마 + 페이스 변동
   const RACE_DIST = PERIM * TOTAL_LAPS;
 
-  // 각 레이서 상태 (보정 없는 물리 베이스)
-  // 스타트/피니시 라인을 s=0으로 맞추고, 그리드는 뒤쪽(음수) 방향으로 정렬
+  // 각 레이서 상태 — 그리드 스태거: 출발선 s=0 뒤쪽(음수) 배치. 완주는 s>=RACE_DIST (= 3*PERIM = 출발선 3회 통과).
   const state = racers.map((r, i) => {
-    const s0 = -(i % 4) * 14 - Math.floor(i/4) * 6; // 그리드 시작 오프셋
+    const s0 = -(i % 4) * 14 - Math.floor(i/4) * 6;
     return { r, i,
     s: s0,
-    s0,   // 시작 위치 (완주 거리 기준점)
+    s0,
     v: 0,            // 현재 속도 (픽셀/ms)
     targetV: 0,      // 목표 속도
     baseV: 0,        // 레이서별 기본 속도 (당첨자가 살짝 빠름)
@@ -2099,7 +2099,7 @@ function horseAnim(picked, pool, seed) {
   }
 
   function updateRanks(){
-    const sorted = state.slice().sort((a,b) => (b.s - b.s0) - (a.s - a.s0));
+    const sorted = state.slice().sort((a,b) => b.s - a.s);
     sorted.forEach((rs, idx) => {
       rs.prevRank = rs.rank;
       rs.rank = idx + 1;
@@ -2165,8 +2165,8 @@ function horseAnim(picked, pool, seed) {
       // 레인 보간 (추월시 살짝 바깥으로)
       rs.lateralTarget = ((rs.i % 5) - 2) * (trackW/6) + (rs.spin>0? (Math.random()-0.5)*10:0);
       rs.lateral += (rs.lateralTarget - rs.lateral) * 0.05;
-      // 완주 체크 (시작 위치 기준 상대 거리)
-      if ((rs.s - rs.s0) >= RACE_DIST){
+      // 완주 체크 — 스타트라인(s=0)을 TOTAL_LAPS회 통과 = s >= RACE_DIST
+      if (rs.s >= RACE_DIST){
         rs.finishedAt = raceT;
         if (rs.i === winIdx){
           winnerDone = true;
@@ -2185,20 +2185,17 @@ function horseAnim(picked, pool, seed) {
       w.baseV = meanV * 1.18;
       // 모든 앞 주자 속도 살짝 완화
       const sorted = state.slice().sort((a,b)=>b.s - a.s);
-      const wDist = w.s - w.s0;
       sorted.forEach((rs, idx) => {
         if (rs.i === winIdx) return;
-        if ((rs.s - rs.s0) > wDist - 30) rs.baseV = Math.min(rs.baseV, meanV * 0.98);
+        if (rs.s > w.s - 30) rs.baseV = Math.min(rs.baseV, meanV * 0.98);
       });
     }
-    // 최종 1% 구간: 당첨자를 확실히 1등으로 (상대 거리 기준)
+    // 최종 구간: 당첨자를 확실히 1등으로
     if (remain < 800 && !winnerDone){
       const w = state[winIdx];
-      const wDist = w.s - w.s0;
       state.forEach(rs => {
         if (rs.i === winIdx) return;
-        const rsDist = rs.s - rs.s0;
-        if (rsDist >= wDist) rs.s = rs.s0 + wDist - (3 + Math.random()*12);
+        if (rs.s >= w.s) rs.s = w.s - (3 + Math.random()*12);
       });
     }
 
@@ -2239,7 +2236,7 @@ function horseAnim(picked, pool, seed) {
 
     // 보드
     const winP = state[winIdx].s / PERIM;
-    const lap = Math.min(TOTAL_LAPS, Math.floor((leader.s - leader.s0) / PERIM) + 1);
+    const lap = Math.min(TOTAL_LAPS, Math.max(1, Math.floor(leader.s / PERIM) + 1));
     document.getElementById("horseLap").textContent = `LAP ${lap} / ${TOTAL_LAPS}`;
     document.getElementById("horseLead").textContent = `선두: ${(leader.r.name||"").slice(0,10)}`;
     document.getElementById("horseTime").textContent = (raceT/1000).toFixed(2) + "s";
@@ -2247,7 +2244,7 @@ function horseAnim(picked, pool, seed) {
     if (!winnerDone){
       if (raceT < 1200) $("horseHint").textContent = "🏁 그린라이트!";
       else if (forceWinnerMode) $("horseHint").innerHTML = `🔥 <b>파이널 랩 — 막판 승부!</b>`;
-      else $("horseHint").innerHTML = `선두 <b>${esc((leader.r.name||"").slice(0,10))}</b> — 2위와의 차이 ${Math.max(0, Math.round((leader.s - leader.s0) - (sorted[1].s - sorted[1].s0)))}m`;
+      else $("horseHint").innerHTML = `선두 <b>${esc((leader.r.name||"").slice(0,10))}</b> — 2위와의 차이 ${Math.max(0, Math.round(leader.s - sorted[1].s))}m`;
       requestAnimationFrame(frame);
     } else {
       const w = state[winIdx];
@@ -2259,7 +2256,57 @@ function horseAnim(picked, pool, seed) {
       ctx.beginPath(); ctx.arc(p.x, p.y, carFont*0.9, 0, Math.PI*2); ctx.stroke();
       ctx.restore();
       $("horseHint").innerHTML = `🏆 <b>${esc(winner.name)}</b> 우승! (${(raceT/1000).toFixed(2)}s)`;
-      setTimeout(() => renderResult(picked), 1500);
+      // 레이싱 화면 자체에 포디움 오버레이
+      if (!window.__racingPodiumShown) {
+        window.__racingPodiumShown = true;
+        setTimeout(() => {
+          const top3 = sorted.slice(0, 3);
+          ctx.save();
+          ctx.fillStyle = "rgba(0,0,0,.7)";
+          ctx.fillRect(0, 0, W, H);
+          // 체커 상단 배너
+          for (let x = 0; x < W; x += 24) {
+            ctx.fillStyle = ((x/24)|0) % 2 === 0 ? "#fff" : "#222";
+            ctx.fillRect(x, 0, 24, 18);
+            ctx.fillRect(x, H-18, 24, 18);
+          }
+          ctx.fillStyle = "#ffd66b";
+          ctx.font = "bold 42px system-ui"; ctx.textAlign = "center";
+          ctx.fillText("🏁 RACE FINISHED 🏁", W/2, 80);
+          ctx.font = "bold 28px system-ui";
+          ctx.fillStyle = "#fff";
+          ctx.fillText("P O D I U M", W/2, 120);
+          // 포디움 블록
+          const blockW = 140;
+          const podiumX = W/2;
+          const blockCfg = [
+            {rank:2, h:140, order:0, medal:"🥈", color:"#c0c0c0"},
+            {rank:1, h:200, order:1, medal:"🥇", color:"#ffd66b"},
+            {rank:3, h:100, order:2, medal:"🥉", color:"#cd7f32"},
+          ];
+          blockCfg.forEach((b, idx) => {
+            const bx = podiumX + (idx - 1) * (blockW + 10) - blockW/2;
+            const by = H - 80 - b.h;
+            ctx.fillStyle = b.color;
+            ctx.fillRect(bx, by, blockW, b.h);
+            ctx.strokeStyle = "#000"; ctx.lineWidth = 3;
+            ctx.strokeRect(bx, by, blockW, b.h);
+            ctx.fillStyle = "#000";
+            ctx.font = "bold 60px system-ui";
+            ctx.fillText(String(b.rank), bx + blockW/2, by + 50);
+            // 이름
+            const name = top3[b.rank-1] ? (top3[b.rank-1].r.name||"").slice(0,10) : "—";
+            ctx.font = "bold 16px system-ui";
+            ctx.fillStyle = "#000";
+            ctx.fillText(name, bx + blockW/2, by + b.h - 14);
+            // 메달
+            ctx.font = "50px serif";
+            ctx.fillText(b.medal, bx + blockW/2, by - 12);
+          });
+          ctx.restore();
+        }, 1200);
+      }
+      // 레이싱 포디움을 캔버스에 그대로 유지 — 모달 교체 없음
     }
   }
 
@@ -2292,47 +2339,57 @@ function archeryAnim(picked, pool, seed) { renderResult(picked); }
 
 // 활쏘기 — 진짜 인터랙티브 (공정성 검증 없음, 조준 실력이 당첨자 결정)
 function archeryInteractive(pool, n) {
-  const W = 460, H = 320;
-  const targetX = W - 90, targetY = H/2, Rmax = 80;
-  const archerX = 60, archerY = H/2;
+  // 리뉴얼: 각도 + 파워 게이지 2단 조작 + 포물선 궤적 + 바람
+  const W = 900, H = 460;
+  const targetX = W - 130, targetY = H - 120, Rmax = 100;
+  const archerX = 90, archerY = H - 80;
 
   $("resultBody").innerHTML = `
-    <div style="font-size:13px;color:#888;margin-bottom:10px">🏹 활쏘기 — 조준 실력이 곧 운명 (공정성 검증 OFF)</div>
-    <div style="position:relative;background:radial-gradient(ellipse at right,#e8f0ff,#b8c8e0);
+    <div style="font-size:13px;color:#888;margin-bottom:10px">🏹 활쏘기 — 각도/파워 게이지로 조준 (공정성 검증 OFF)</div>
+    <div style="position:relative;background:linear-gradient(180deg,#bde3ff,#eef6ff 60%,#9ab878 60%,#6f9a5a);
          border-radius:12px;overflow:hidden">
       <canvas id="archC" width="${W}" height="${H}" style="max-width:100%;display:block"></canvas>
     </div>
-    <div id="archHint" style="margin-top:10px;font-size:13px;color:var(--muted);text-align:center">
-      조준선이 흔들리는 동안 <b>쏘기</b>를 눌러 화살의 착점을 결정하세요. 착점에서 가장 가까운 참가자가 당첨됩니다.
+    <div id="archHint" style="margin-top:10px;font-size:14px;color:var(--ink);text-align:center;font-weight:700">
+      Space를 눌러 <b>① 각도 결정 → ② 파워 결정</b>. 궤적은 중력 + 바람을 받습니다.
     </div>
     <div style="margin-top:10px;display:flex;justify-content:center;gap:8px">
-      <button id="shootBtn" class="primary lg">🏹 쏘기 (Space)</button>
+      <button id="shootBtn" class="primary lg">🏹 확정 (Space)</button>
     </div>`;
 
   const cv = document.getElementById("archC"), ctx = cv.getContext("2d");
 
-  // 참가자를 과녁 주변에 무작위 배치 (polar 좌표, Rmax 내부)
-  const spots = pool.map((p, i) => {
-    // 균등 분포 — r = Rmax*sqrt(rand), θ = rand*2π
+  // 참가자를 과녁 및 주변에 배치 (가까울수록 몰림)
+  const spots = pool.map((p) => {
     const r = Rmax * Math.sqrt(Math.random()) * 0.95;
     const a = Math.random() * Math.PI * 2;
-    return {
-      c: p,
-      x: targetX + Math.cos(a) * r,
-      y: targetY + Math.sin(a) * r,
-    };
+    return { c: p, x: targetX + Math.cos(a) * r, y: targetY + Math.sin(a) * r };
   });
 
-  let aimY = H/2;
+  // 바람 (좌우 가속) — 레이스 동안 서서히 변함
+  let wind = (Math.random() - 0.5) * 0.08;
+  setInterval(() => { wind = Math.max(-0.12, Math.min(0.12, wind + (Math.random()-0.5)*0.04)); }, 800);
+
+  let phase = "angle";   // angle → power → flying → done
+  let angle = -Math.PI/4; // 발사 각 (-π/2 수직 위, 0 수평)
+  let angleT = 0;
+  let power = 0;         // 0..1
+  let powerT = 0;
+  let shotVx = 0, shotVy = 0;
+  let ax = archerX, ay = archerY; // 화살 현재 위치
+  let trail = [];
   let t0 = performance.now();
-  let shot = false;
+  let landed = false;
+  let landAt = null;
 
   function drawScene() {
     ctx.clearRect(0,0,W,H);
-    // 바닥
-    ctx.fillStyle = "#9ab878";
-    ctx.fillRect(0, H-40, W, 40);
-    // 과녁 (동심원)
+    // 배경은 CSS 그라디언트로 처리 — 투명 배경 유지 위해 clear만
+    // 과녁 (동심원) + 그림자
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,.25)";
+    ctx.beginPath(); ctx.ellipse(targetX, targetY+Rmax+12, Rmax*0.9, 10, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
     const rings = [
       { r: Rmax, c: "#fff" },
       { r: Rmax*0.8, c: "#222" },
@@ -2346,123 +2403,196 @@ function archeryInteractive(pool, n) {
       ctx.fillStyle = r.c; ctx.fill();
       ctx.lineWidth = 1; ctx.strokeStyle = "rgba(0,0,0,.2)"; ctx.stroke();
     });
-    // 참가자 점 (과녁 내부에 흩뿌려짐)
+    // 참가자 점 — 더 크게
     for (const s of spots) {
-      ctx.beginPath(); ctx.arc(s.x, s.y, 2.2, 0, Math.PI*2);
-      ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fill();
+      ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, Math.PI*2);
+      ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fill();
     }
-
-    // 스탠드
-    ctx.fillStyle = "#6b4a2a";
-    ctx.fillRect(targetX-3, targetY+Rmax, 6, 40);
+    // 과녁 스탠드
+    ctx.fillStyle = "#6b4a2a"; ctx.fillRect(targetX-4, targetY+Rmax, 8, 50);
+    // 바람 표시
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,.15)";
+    ctx.font = "bold 14px system-ui"; ctx.textAlign = "left";
+    ctx.fillText(`바람 ${wind>0?"→":"←"} ${Math.abs(wind).toFixed(2)}`, 20, 26);
+    // 바람 화살표
+    const wxc = 130, wyc = 22;
+    ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(wxc, wyc); ctx.lineTo(wxc + wind*300, wyc); ctx.stroke();
+    ctx.restore();
 
     // 궁수
-    ctx.font = "40px serif"; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    ctx.font = "56px serif"; ctx.textBaseline = "middle"; ctx.textAlign = "center";
     ctx.fillText("🏹", archerX, archerY);
   }
 
-  function drawAim(y) {
-    // 점선 조준선
+  function drawAngleGauge(){
+    // 궁수에서 나오는 각도 조준 라인 + 반원 게이지
     ctx.save();
-    ctx.setLineDash([6,6]);
-    ctx.strokeStyle = "rgba(255,60,60,.65)";
-    ctx.lineWidth = 2;
+    ctx.translate(archerX, archerY);
+    // 반원 배경
+    ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 60, -Math.PI*0.85, -0.05); ctx.stroke();
+    // 현재 각도 라인 (긴 빨간선)
+    ctx.strokeStyle = phase==="angle" ? "#ff3c3c" : "#888";
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(archerX+20, archerY);
-    ctx.lineTo(targetX-Rmax, y);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(angle)*240, Math.sin(angle)*240);
     ctx.stroke();
+    // 팁 점
+    ctx.fillStyle = "#ff3c3c";
+    ctx.beginPath(); ctx.arc(Math.cos(angle)*60, Math.sin(angle)*60, 6, 0, Math.PI*2); ctx.fill();
     ctx.restore();
-    // 조준점
-    ctx.beginPath(); ctx.arc(targetX-Rmax+2, y, 4, 0, Math.PI*2);
-    ctx.fillStyle = "#ff3c3c"; ctx.fill();
   }
 
-  function loop(now) {
-    if (shot) return;
+  function drawPowerGauge(){
+    // 화면 하단 중앙 파워바
+    const pw = 420, ph = 22, px = (W-pw)/2, py = H - 30;
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(px-3, py-3, pw+6, ph+6);
+    // 그라디언트 초→노→빨
+    const grd = ctx.createLinearGradient(px, py, px+pw, py);
+    grd.addColorStop(0, "#6ade8a"); grd.addColorStop(0.5, "#ffd66b"); grd.addColorStop(1, "#ff6b6b");
+    ctx.fillStyle = grd; ctx.fillRect(px, py, pw*power, ph);
+    // 외곽
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.strokeRect(px, py, pw, ph);
+    ctx.fillStyle = "#fff"; ctx.font = "bold 14px system-ui"; ctx.textAlign = "center";
+    ctx.fillText(`POWER ${Math.round(power*100)}%`, W/2, py - 8);
+    ctx.restore();
+  }
+
+  function loop(now){
+    if (phase === "flying" || phase === "done") return;
     const dt = now - t0;
-    // 오실레이션: 과녁 상하로 왕복, 속도 변화
-    aimY = targetY + Math.sin(dt * 0.0045) * (Rmax + 10);
+    // 각도 진자 (−0.85π ~ −0.05)
+    if (phase === "angle"){
+      angleT = dt;
+      const sweep = 0.85 * Math.PI - 0.05;
+      const base = -Math.PI * 0.85;
+      angle = base + (0.5 - Math.cos(dt*0.003)*0.5) * sweep;
+      $("archHint").innerHTML = `① <b>각도</b> 결정 — Space로 확정`;
+    } else if (phase === "power"){
+      powerT += 16;
+      power = 0.5 - Math.cos(powerT*0.006) * 0.5;
+      $("archHint").innerHTML = `② <b>파워</b> 결정 — Space로 발사`;
+    }
     drawScene();
-    drawAim(aimY);
+    drawAngleGauge();
+    drawPowerGauge();
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 
-  function shoot() {
-    if (shot) return; shot = true;
-    const userAimY = aimY;
+  function confirm(){
+    if (phase === "angle"){ phase = "power"; return; }
+    if (phase === "power"){ launch(); return; }
+  }
 
-    // 착점 계산: 사용자 조준선이 과녁 평면(targetX)에 도달하는 점 +
-    // 미세한 바람/손떨림 (실력 피드백용)
-    const windY = (Math.random() - 0.5) * 8;
-    const landingX = targetX + (Math.random() - 0.5) * 6;
-    const landingY = userAimY + windY;
+  function launch(){
+    phase = "flying";
+    const speed = 10 + power * 18; // 최소 발사 속도 보장
+    shotVx = Math.cos(angle) * speed;
+    shotVy = Math.sin(angle) * speed;
+    ax = archerX + 20; ay = archerY - 8;
+    trail = [];
+    requestAnimationFrame(fly);
+  }
 
-    // 착점과 각 참가자 거리 → 가장 가까운 사람이 당첨자
+  function fly(now){
+    // 물리: 중력 + 바람
+    shotVy += 0.35; // 중력
+    shotVx += wind;  // 바람 수평 가속
+    ax += shotVx;
+    ay += shotVy;
+    trail.push({x: ax, y: ay});
+    if (trail.length > 40) trail.shift();
+
+    drawScene();
+    // 궤적
+    ctx.save();
+    ctx.strokeStyle = "rgba(0,0,0,.3)"; ctx.lineWidth = 2; ctx.setLineDash([3,4]);
+    ctx.beginPath();
+    trail.forEach((p,i) => { if (i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); });
+    ctx.stroke();
+    ctx.restore();
+    // 화살
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(Math.atan2(shotVy, shotVx));
+    ctx.font = "26px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("➤", 0, 0);
+    ctx.restore();
+
+    // 착지 판정: 과녁 평면(x>=targetX - Rmax - 10 && y>=targetY-Rmax) 또는 지면(y>=H-20) 또는 화면 밖
+    const hitTargetPlane = ax >= targetX - 2 && shotVx > 0;
+    const hitGround = ay >= H - 30;
+    const offscreen = ax > W + 50 || ax < -50;
+
+    if (hitTargetPlane || hitGround || offscreen){
+      land(ax, ay, hitTargetPlane);
+      return;
+    }
+    requestAnimationFrame(fly);
+  }
+
+  function land(lx, ly, hitTarget){
+    // 가장 가까운 참가자 탐색 (과녁 평면 착지에만 근접 승부; 지면/화면밖이면 가장 먼 사람이라도 결정)
     let best = 0, bestD = Infinity;
     spots.forEach((s, i) => {
-      const d = Math.hypot(s.x - landingX, s.y - landingY);
+      const d = Math.hypot(s.x - lx, s.y - ly);
       if (d < bestD) { bestD = d; best = i; }
     });
     const winner = spots[best].c;
     const picked = [winner];
 
-    // 착점이 과녁 중앙에서 얼마나 떨어졌는지 → 문구
-    const centerDist = Math.hypot(landingX - targetX, landingY - targetY);
+    const centerDist = Math.hypot(lx - targetX, ly - targetY);
     let accMsg;
-    if (centerDist < Rmax*0.1) accMsg = "💯 퍼펙트 샷!";
+    if (!hitTarget) accMsg = "💨 과녁 빗나감...";
+    else if (centerDist < Rmax*0.1) accMsg = "💯 퍼펙트 샷!";
     else if (centerDist < Rmax*0.3) accMsg = "🎯 명중!";
     else if (centerDist < Rmax*0.6) accMsg = "👍 나쁘지 않아요";
     else if (centerDist < Rmax) accMsg = "😅 과녁은 맞춤";
     else accMsg = "💨 빗나감...";
 
-    const startT = performance.now();
-    const flyDur = 700;
-    const sx = archerX+20, sy = archerY;
-    const ex = landingX, ey = landingY;
+    // 활쏘기 화면 안에서 결과 오버레이 유지
+    drawScene();
+    // 궤적
+    ctx.save();
+    ctx.strokeStyle = "rgba(0,0,0,.3)"; ctx.lineWidth = 2; ctx.setLineDash([3,4]);
+    ctx.beginPath();
+    trail.forEach((p,i) => { if (i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); });
+    ctx.stroke();
+    ctx.restore();
+    // 박힌 화살
+    ctx.beginPath(); ctx.arc(lx, ly, 5, 0, Math.PI*2); ctx.fillStyle = "#000"; ctx.fill();
+    ctx.font = "28px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("➤", lx, ly);
+    // 당첨자 스포트라이트
+    const w = spots[best];
+    ctx.beginPath(); ctx.arc(w.x, w.y, 16, 0, Math.PI*2);
+    ctx.strokeStyle = "#ffd66b"; ctx.lineWidth = 4; ctx.stroke();
+    // 큰 결과 배너 (화면 상단)
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,.7)"; ctx.fillRect(0, 0, W, 90);
+    ctx.fillStyle = "#ffd66b"; ctx.font = "bold 32px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(`${accMsg} 🏆 ${winner.name}`, W/2, 45);
+    ctx.restore();
 
-    function fly(now) {
-      const t = Math.min(1, (now - startT) / flyDur);
-      const bx = sx + (ex - sx) * t;
-      const by = sy + (ey - sy) * t;
-      drawScene();
-      ctx.strokeStyle = "#5a3a1a"; ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
-      ctx.font = "20px serif"; ctx.fillStyle = "#000";
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText("➤", bx, by);
-      if (t < 1) requestAnimationFrame(fly);
-      else {
-        drawScene();
-        // 박힌 화살 + 착점 강조
-        ctx.beginPath(); ctx.arc(ex, ey, 4, 0, Math.PI*2);
-        ctx.fillStyle = "#000"; ctx.fill();
-        ctx.font = "22px serif"; ctx.fillText("➤", ex, ey);
-        // 당첨자 스포트라이트
-        const w = spots[best];
-        ctx.beginPath(); ctx.arc(w.x, w.y, 12, 0, Math.PI*2);
-        ctx.strokeStyle = "#ffd66b"; ctx.lineWidth = 3; ctx.stroke();
-        // 플래시
-        ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(0,0,W,H);
-        $("archHint").innerHTML = `${accMsg} — 🏆 <b>${esc(winner.name)}</b> 당첨!`;
+    $("archHint").innerHTML = `${accMsg} — 🏆 <b>${esc(winner.name)}</b> 당첨!`;
+    phase = "done";
 
-        // 로그에 기록 (공정성 검증 없음 표시)
-        recordLog({
-          method: "archery", pool, picked,
-          entropy: { source: "user-aim", aimY: Math.round(userAimY), landing: [Math.round(ex), Math.round(ey)], ts: Date.now() },
-          fp: "", seed: "",
-        });
-
-        setTimeout(() => renderResult(picked), 1200);
-      }
-    }
-    requestAnimationFrame(fly);
+    recordLog({
+      method: "archery", pool, picked,
+      entropy: { source: "user-aim", angle: +angle.toFixed(4), power: +power.toFixed(3), wind: +wind.toFixed(3), landing: [Math.round(lx), Math.round(ly)], ts: Date.now() },
+      fp: "", seed: "",
+    });
+    // 결과창은 활쏘기 화면 자체에 그대로 유지 — 모달 교체 없음
   }
-  document.getElementById("shootBtn").onclick = shoot;
-  const onKey = (e) => { if (e.code === "Space") { e.preventDefault(); shoot(); document.removeEventListener("keydown", onKey); } };
+
+  document.getElementById("shootBtn").onclick = confirm;
+  const onKey = (e) => { if (e.code === "Space") { e.preventDefault(); confirm(); if (phase === "done") document.removeEventListener("keydown", onKey); } };
   document.addEventListener("keydown", onKey);
 }
 
