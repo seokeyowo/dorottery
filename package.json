@@ -1,6 +1,6 @@
 {
   "name": "dorottery",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "DC 게시글 댓글 추첨기",
   "main": "server.js",
   "scripts": {

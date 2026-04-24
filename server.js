@@ -4,6 +4,17 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const cheerio = require("cheerio");
+// Windows에서 undici 가 IPv6 우선 해석으로 타임아웃 나는 현상 방지
+try { require("dns").setDefaultResultOrder("ipv4first"); } catch {}
+// undici dispatcher: IPv4/IPv6 자동 선택 + 연결 타임아웃 여유
+try {
+  const { Agent, setGlobalDispatcher } = require("undici");
+  setGlobalDispatcher(new Agent({
+    connect: { timeout: 20000, family: 4 },
+    headersTimeout: 30000,
+    bodyTimeout: 30000,
+  }));
+} catch {}
 if (typeof globalThis.File === "undefined") {
   globalThis.File = require("buffer").File;
 }
